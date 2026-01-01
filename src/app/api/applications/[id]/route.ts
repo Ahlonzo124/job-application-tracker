@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ApplicationStage } from "@prisma/client";
+import { z } from "zod";
 
 type PatchBody = {
   stage?: ApplicationStage;
@@ -9,21 +10,79 @@ type PatchBody = {
   notes?: string | null;
 };
 
+const PutBodySchema = z.object({
+  company: z.string().min(1),
+  title: z.string().min(1),
+
+  location: z.string().optional().nullable(),
+  url: z.string().optional().nullable(),
+
+  jobType: z.string().optional().nullable(),
+  workMode: z.string().optional().nullable(),
+  seniority: z.string().optional().nullable(),
+
+  salaryMin: z.number().optional().nullable(),
+  salaryMax: z.number().optional().nullable(),
+  salaryCurrency: z.string().optional().nullable(),
+  salaryPeriod: z.string().optional().nullable(),
+
+  descriptionSummary: z.string().optional().nullable(),
+
+  keyRequirements: z.array(z.string()).optional().nullable(),
+  keyResponsibilities: z.array(z.string()).optional().nullable(),
+
+  stage: z.nativeEnum(ApplicationStage).optional().nullable(),
+  sortOrder: z.number().int().optional().nullable(),
+
+  notes: z.string().optional().nullable(),
+  appliedDate: z.string().datetime().optional().nullable(),
+});
+
+function parseId(ctx: { params: Promise<{ id: string }> }) {
+  return ctx.params.then(({ id }) => {
+    const n = Number(id);
+    return Number.isNaN(n) ? null : n;
+  });
+}
+
+function normalizeApp(a: any) {
+  return {
+    ...a,
+    keyRequirements: a.keyRequirementsJson ? JSON.parse(a.keyRequirementsJson) : [],
+    keyResponsibilities: a.keyResponsibilitiesJson
+      ? JSON.parse(a.keyResponsibilitiesJson)
+      : [],
+  };
+}
+
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const id = await parseId(ctx);
+  if (!id) return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
+
+  try {
+    const app = await prisma.application.findUnique({ where: { id } });
+    if (!app) {
+      return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, application: normalizeApp(app) });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Fetch failed" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const { id: idStr } = await ctx.params;
-  const id = Number(idStr);
-
-  if (Number.isNaN(id)) {
-    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-  }
+  const id = await parseId(ctx);
+  if (!id) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
   const body = (await req.json().catch(() => ({}))) as PatchBody;
 
   const data: any = {};
-
   if (body.stage) data.stage = body.stage;
   if (typeof body.sortOrder === "number") data.sortOrder = body.sortOrder;
 
@@ -42,6 +101,78 @@ export async function PATCH(
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? "Update failed" },
+      { status: 400 }
+    );
+  }
+}
+
+export async function PUT(
+  req: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  const id = await parseId(ctx);
+  if (!id) return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
+
+  try {
+    const input = PutBodySchema.parse(await req.json());
+
+    const updated = await prisma.application.update({
+      where: { id },
+      data: {
+        company: input.company,
+        title: input.title,
+
+        location: input.location ?? null,
+        url: input.url ?? null,
+
+        jobType: input.jobType ?? null,
+        workMode: input.workMode ?? null,
+        seniority: input.seniority ?? null,
+
+        salaryMin: input.salaryMin ?? null,
+        salaryMax: input.salaryMax ?? null,
+        salaryCurrency: input.salaryCurrency ?? null,
+        salaryPeriod: input.salaryPeriod ?? null,
+
+        descriptionSummary: input.descriptionSummary ?? null,
+
+        keyRequirementsJson: input.keyRequirements
+          ? JSON.stringify(input.keyRequirements)
+          : null,
+        keyResponsibilitiesJson: input.keyResponsibilities
+          ? JSON.stringify(input.keyResponsibilities)
+          : null,
+
+        stage: input.stage ?? undefined,
+        sortOrder: input.sortOrder ?? undefined,
+
+        notes: input.notes ?? null,
+        appliedDate: input.appliedDate ? new Date(input.appliedDate) : null,
+      },
+    });
+
+    return NextResponse.json({ ok: true, application: normalizeApp(updated) });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Update failed" },
+      { status: 400 }
+    );
+  }
+}
+
+export async function DELETE(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  const id = await parseId(ctx);
+  if (!id) return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
+
+  try {
+    await prisma.application.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Delete failed" },
       { status: 400 }
     );
   }
