@@ -11,6 +11,7 @@ enum ApplicationStage {
   INTERVIEW
   OFFER
   HIRED
+  REJECTED
 }
 
 model Application {

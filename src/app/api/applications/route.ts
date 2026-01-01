@@ -1,25 +1,36 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-
+import { ApplicationStage } from "@prisma/client";
 
 const ApplicationCreateSchema = z.object({
   company: z.string().min(1),
   title: z.string().min(1),
   location: z.string().optional().nullable(),
   url: z.string().optional().nullable(),
+
   jobType: z.string().optional().nullable(),
   workMode: z.string().optional().nullable(),
   seniority: z.string().optional().nullable(),
+
   salaryMin: z.number().optional().nullable(),
   salaryMax: z.number().optional().nullable(),
   salaryCurrency: z.string().optional().nullable(),
   salaryPeriod: z.string().optional().nullable(),
+
   descriptionSummary: z.string().optional().nullable(),
+
   keyRequirements: z.array(z.string()).optional().nullable(),
   keyResponsibilities: z.array(z.string()).optional().nullable(),
-  stage: z.string().optional().nullable(),
+
+  // IMPORTANT: stage is now an enum (APPLIED | INTERVIEW | OFFER | HIRED)
+  // We allow it to be optional; default will be APPLIED.
+  stage: z.nativeEnum(ApplicationStage).optional().nullable(),
+
+  sortOrder: z.number().int().optional().nullable(),
+
   notes: z.string().optional().nullable(),
+  appliedDate: z.string().datetime().optional().nullable(), // allow passing ISO if you want
 });
 
 export async function POST(req: Request) {
@@ -30,21 +41,38 @@ export async function POST(req: Request) {
       data: {
         company: input.company,
         title: input.title,
+
         location: input.location ?? null,
         url: input.url ?? null,
+
         jobType: input.jobType ?? null,
         workMode: input.workMode ?? null,
         seniority: input.seniority ?? null,
+
         salaryMin: input.salaryMin ?? null,
         salaryMax: input.salaryMax ?? null,
         salaryCurrency: input.salaryCurrency ?? null,
         salaryPeriod: input.salaryPeriod ?? null,
+
         descriptionSummary: input.descriptionSummary ?? null,
-        keyRequirementsJson: input.keyRequirements ? JSON.stringify(input.keyRequirements) : null,
-        keyResponsibilitiesJson: input.keyResponsibilities ? JSON.stringify(input.keyResponsibilities) : null,
-        stage: input.stage ?? "Applied",
+
+        keyRequirementsJson: input.keyRequirements
+          ? JSON.stringify(input.keyRequirements)
+          : null,
+        keyResponsibilitiesJson: input.keyResponsibilities
+          ? JSON.stringify(input.keyResponsibilities)
+          : null,
+
+        // Default to APPLIED if not provided
+        stage: input.stage ?? ApplicationStage.APPLIED,
+
+        // For now default to 0 if not provided
+        sortOrder: input.sortOrder ?? 0,
+
         notes: input.notes ?? null,
-        appliedDate: new Date(),
+
+        // Default appliedDate to "now" if not provided
+        appliedDate: input.appliedDate ? new Date(input.appliedDate) : new Date(),
       },
     });
 
@@ -59,12 +87,20 @@ export async function POST(req: Request) {
 
 export async function GET() {
   try {
-    const apps = await prisma.application.findMany({ orderBy: { createdAt: "desc" } });
+    const apps = await prisma.application.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+
     const normalized = apps.map((a) => ({
       ...a,
-      keyRequirements: a.keyRequirementsJson ? JSON.parse(a.keyRequirementsJson) : [],
-      keyResponsibilities: a.keyResponsibilitiesJson ? JSON.parse(a.keyResponsibilitiesJson) : [],
+      keyRequirements: a.keyRequirementsJson
+        ? JSON.parse(a.keyRequirementsJson)
+        : [],
+      keyResponsibilities: a.keyResponsibilitiesJson
+        ? JSON.parse(a.keyResponsibilitiesJson)
+        : [],
     }));
+
     return NextResponse.json({ ok: true, applications: normalized });
   } catch (err: any) {
     return NextResponse.json(

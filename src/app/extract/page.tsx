@@ -30,7 +30,17 @@ type ParsedJob = {
   keyResponsibilities: string[] | null;
 };
 
-const STAGES = ["Applied", "Interview", "Offer", "Rejected", "Hired"];
+// Prisma enum-safe stage values
+type Stage = "APPLIED" | "INTERVIEW" | "OFFER" | "HIRED" | "REJECTED";
+
+// UI stages: value is enum-safe, label is user-friendly
+const STAGES: { value: Stage; label: string }[] = [
+  { value: "APPLIED", label: "Applied" },
+  { value: "INTERVIEW", label: "Interview" },
+  { value: "OFFER", label: "Offer" },
+  { value: "HIRED", label: "Hired" },
+  { value: "REJECTED", label: "Rejected" },
+];
 
 export default function ExtractPage() {
   const [url, setUrl] = useState("");
@@ -55,7 +65,7 @@ export default function ExtractPage() {
     descriptionSummary: "",
     keyRequirements: [] as string[],
     keyResponsibilities: [] as string[],
-    stage: "Applied",
+    stage: "APPLIED" as Stage,
     notes: "",
   });
 
@@ -73,7 +83,9 @@ export default function ExtractPage() {
 
     (async () => {
       try {
-        const r = await fetch(`/api/extension/inbox?token=${encodeURIComponent(token)}`);
+        const r = await fetch(
+          `/api/extension/inbox?token=${encodeURIComponent(token)}`
+        );
         const j = await r.json();
 
         if (!r.ok || !j.ok) {
@@ -124,7 +136,8 @@ export default function ExtractPage() {
     try {
       const payload: any = {};
       if (url.trim()) payload.url = url.trim();
-      if (pastedText.trim().length >= 30) payload.pastedText = pastedText.trim();
+      if (pastedText.trim().length >= 30)
+        payload.pastedText = pastedText.trim();
 
       const r = await fetch("/api/extract-and-parse", {
         method: "POST",
@@ -137,7 +150,12 @@ export default function ExtractPage() {
       try {
         j = JSON.parse(text);
       } catch {
-        setSaveMsg(`Extract+Analyze failed (non-JSON). Status ${r.status}. Preview: ${text.slice(0, 200)}`);
+        setSaveMsg(
+          `Extract+Analyze failed (non-JSON). Status ${r.status}. Preview: ${text.slice(
+            0,
+            200
+          )}`
+        );
         setLoading(false);
         return;
       }
@@ -152,7 +170,10 @@ export default function ExtractPage() {
       setExtractRes(j.extract);
       setAiResRaw(j.ai);
 
-      const bestUrl = (j?.bestUrl && typeof j.bestUrl === "string") ? j.bestUrl : (url.trim() || j.extract?.url || "");
+      const bestUrl =
+        j?.bestUrl && typeof j.bestUrl === "string"
+          ? j.bestUrl
+          : url.trim() || j.extract?.url || "";
 
       if (j.ai?.data) fillFormFromAI(j.ai.data, bestUrl);
 
@@ -198,6 +219,7 @@ export default function ExtractPage() {
         keyRequirements: form.keyRequirements ?? [],
         keyResponsibilities: form.keyResponsibilities ?? [],
 
+        // enum-safe stage value
         stage: form.stage,
         notes: form.notes.trim() || null,
       };
@@ -213,7 +235,12 @@ export default function ExtractPage() {
       try {
         j = JSON.parse(text);
       } catch {
-        setSaveMsg(`Save failed (non-JSON). Status ${r.status}. Preview: ${text.slice(0, 200)}`);
+        setSaveMsg(
+          `Save failed (non-JSON). Status ${r.status}. Preview: ${text.slice(
+            0,
+            200
+          )}`
+        );
         setSaveLoading(false);
         return;
       }
@@ -275,12 +302,21 @@ export default function ExtractPage() {
                 </div>
               </div>
 
-              <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div
+                style={{
+                  marginTop: 12,
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
                 <button
                   onClick={() => {
                     setPastedText(inboxItem.extractedText || "");
                     if (inboxItem.url) setUrl(inboxItem.url);
-                    setInboxMsg("Loaded from extension. Now click Extract + Analyze.");
+                    setInboxMsg(
+                      "Loaded from extension. Now click Extract + Analyze."
+                    );
                     window.history.replaceState({}, "", "/extract");
                   }}
                   style={{
@@ -319,25 +355,39 @@ export default function ExtractPage() {
       {/* Inputs */}
       <div style={{ display: "grid", gap: 12 }}>
         <label>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Job Posting URL</div>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>
+            Job Posting URL
+          </div>
           <input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://careers.company.com/job/..."
-            style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
+            style={{
+              width: "100%",
+              padding: 10,
+              border: "1px solid #ccc",
+              borderRadius: 8,
+            }}
           />
         </label>
 
         <div style={{ textAlign: "center", opacity: 0.6 }}>— OR —</div>
 
         <label>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Paste Job Description (fallback)</div>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>
+            Paste Job Description (fallback)
+          </div>
           <textarea
             value={pastedText}
             onChange={(e) => setPastedText(e.target.value)}
             rows={8}
             placeholder="Paste the job description here..."
-            style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
+            style={{
+              width: "100%",
+              padding: 10,
+              border: "1px solid #ccc",
+              borderRadius: 8,
+            }}
           />
         </label>
 
@@ -356,7 +406,14 @@ export default function ExtractPage() {
         </button>
 
         {saveMsg && (
-          <div style={{ padding: 10, border: "1px solid #f2c1c1", borderRadius: 10, background: "#fff5f5" }}>
+          <div
+            style={{
+              padding: 10,
+              border: "1px solid #f2c1c1",
+              borderRadius: 10,
+              background: "#fff5f5",
+            }}
+          >
             <b style={{ color: "#b00020" }}>Message:</b>{" "}
             <span style={{ color: "#b00020" }}>{saveMsg}</span>
           </div>
@@ -365,52 +422,123 @@ export default function ExtractPage() {
 
       {/* Editable form */}
       {parsed && (
-        <div style={{ marginTop: 18, padding: 14, border: "1px solid #ddd", borderRadius: 12 }}>
+        <div
+          style={{
+            marginTop: 18,
+            padding: 14,
+            border: "1px solid #ddd",
+            borderRadius: 12,
+          }}
+        >
           <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 10 }}>
             Application (editable)
           </h2>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Company" value={form.company} onChange={(v) => setForm((p) => ({ ...p, company: v }))} />
-            <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}
+          >
+            <Field
+              label="Company"
+              value={form.company}
+              onChange={(v) => setForm((p) => ({ ...p, company: v }))}
+            />
+            <Field
+              label="Title"
+              value={form.title}
+              onChange={(v) => setForm((p) => ({ ...p, title: v }))}
+            />
 
-            <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} />
-            <Field label="URL" value={form.url} onChange={(v) => setForm((p) => ({ ...p, url: v }))} />
+            <Field
+              label="Location"
+              value={form.location}
+              onChange={(v) => setForm((p) => ({ ...p, location: v }))}
+            />
+            <Field
+              label="URL"
+              value={form.url}
+              onChange={(v) => setForm((p) => ({ ...p, url: v }))}
+            />
 
-            <Field label="Job Type" value={form.jobType} onChange={(v) => setForm((p) => ({ ...p, jobType: v }))} />
-            <Field label="Work Mode" value={form.workMode} onChange={(v) => setForm((p) => ({ ...p, workMode: v }))} />
+            <Field
+              label="Job Type"
+              value={form.jobType}
+              onChange={(v) => setForm((p) => ({ ...p, jobType: v }))}
+            />
+            <Field
+              label="Work Mode"
+              value={form.workMode}
+              onChange={(v) => setForm((p) => ({ ...p, workMode: v }))}
+            />
 
-            <Field label="Seniority" value={form.seniority} onChange={(v) => setForm((p) => ({ ...p, seniority: v }))} />
+            <Field
+              label="Seniority"
+              value={form.seniority}
+              onChange={(v) => setForm((p) => ({ ...p, seniority: v }))}
+            />
 
             <div>
               <div style={{ fontWeight: 900, marginBottom: 6 }}>Stage</div>
               <select
                 value={form.stage}
-                onChange={(e) => setForm((p) => ({ ...p, stage: e.target.value }))}
-                style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, stage: e.target.value as Stage }))
+                }
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  border: "1px solid #ccc",
+                  borderRadius: 8,
+                }}
               >
                 {STAGES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                  <option key={s.value} value={s.value}>
+                    {s.label}
                   </option>
                 ))}
               </select>
             </div>
 
-            <Field label="Salary Min" value={form.salaryMin} onChange={(v) => setForm((p) => ({ ...p, salaryMin: v }))} />
-            <Field label="Salary Max" value={form.salaryMax} onChange={(v) => setForm((p) => ({ ...p, salaryMax: v }))} />
+            <Field
+              label="Salary Min"
+              value={form.salaryMin}
+              onChange={(v) => setForm((p) => ({ ...p, salaryMin: v }))}
+            />
+            <Field
+              label="Salary Max"
+              value={form.salaryMax}
+              onChange={(v) => setForm((p) => ({ ...p, salaryMax: v }))}
+            />
 
-            <Field label="Salary Currency" value={form.salaryCurrency} onChange={(v) => setForm((p) => ({ ...p, salaryCurrency: v }))} />
-            <Field label="Salary Period" value={form.salaryPeriod} onChange={(v) => setForm((p) => ({ ...p, salaryPeriod: v }))} />
+            <Field
+              label="Salary Currency"
+              value={form.salaryCurrency}
+              onChange={(v) => setForm((p) => ({ ...p, salaryCurrency: v }))}
+            />
+            <Field
+              label="Salary Period"
+              value={form.salaryPeriod}
+              onChange={(v) => setForm((p) => ({ ...p, salaryPeriod: v }))}
+            />
           </div>
 
           <div style={{ marginTop: 12 }}>
             <div style={{ fontWeight: 900, marginBottom: 6 }}>Summary</div>
             <textarea
               value={form.descriptionSummary}
-              onChange={(e) => setForm((p) => ({ ...p, descriptionSummary: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, descriptionSummary: e.target.value }))
+              }
               rows={4}
-              style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
+              style={{
+                width: "100%",
+                padding: 10,
+                border: "1px solid #ccc",
+                borderRadius: 8,
+              }}
             />
           </div>
 
@@ -423,7 +551,9 @@ export default function ExtractPage() {
           <TwoListEditor
             title="Key Responsibilities"
             items={form.keyResponsibilities}
-            onChange={(items) => setForm((p) => ({ ...p, keyResponsibilities: items }))}
+            onChange={(items) =>
+              setForm((p) => ({ ...p, keyResponsibilities: items }))
+            }
           />
 
           <div style={{ marginTop: 12 }}>
@@ -432,11 +562,24 @@ export default function ExtractPage() {
               value={form.notes}
               onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
               rows={3}
-              style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
+              style={{
+                width: "100%",
+                padding: 10,
+                border: "1px solid #ccc",
+                borderRadius: 8,
+              }}
             />
           </div>
 
-          <div style={{ marginTop: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <div
+            style={{
+              marginTop: 12,
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
             <button
               onClick={handleSave}
               disabled={saveLoading}
@@ -474,7 +617,12 @@ function Field(props: {
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
         placeholder={props.placeholder}
-        style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
+        style={{
+          width: "100%",
+          padding: 10,
+          border: "1px solid #ccc",
+          borderRadius: 8,
+        }}
       />
     </label>
   );
@@ -496,7 +644,13 @@ function TwoListEditor(props: {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Add an item..."
-          style={{ flex: 1, minWidth: 260, padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
+          style={{
+            flex: 1,
+            minWidth: 260,
+            padding: 10,
+            border: "1px solid #ccc",
+            borderRadius: 8,
+          }}
         />
         <button
           onClick={() => {
@@ -505,7 +659,13 @@ function TwoListEditor(props: {
             props.onChange([...(props.items || []), t]);
             setDraft("");
           }}
-          style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #111", fontWeight: 900, cursor: "pointer" }}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid #111",
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
         >
           Add
         </button>
@@ -521,7 +681,13 @@ function TwoListEditor(props: {
                 next.splice(idx, 1);
                 props.onChange(next);
               }}
-              style={{ marginLeft: 8, border: "1px solid #999", borderRadius: 8, padding: "2px 8px", cursor: "pointer" }}
+              style={{
+                marginLeft: 8,
+                border: "1px solid #999",
+                borderRadius: 8,
+                padding: "2px 8px",
+                cursor: "pointer",
+              }}
             >
               remove
             </button>
