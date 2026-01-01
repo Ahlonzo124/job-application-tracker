@@ -71,14 +71,37 @@ function findIndexById(list: Application[], id: string) {
   return list.findIndex((a) => a.id === num);
 }
 
+function matchesQuery(app: Application, q: string) {
+  if (!q) return true;
+  const hay = [
+    app.company ?? "",
+    app.title ?? "",
+    app.location ?? "",
+    app.jobType ?? "",
+    app.workMode ?? "",
+    app.seniority ?? "",
+    app.notes ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return hay.includes(q);
+}
+
 export default function PipelineBoard() {
   const [columns, setColumns] = useState<ColumnsState>(emptyColumns());
   const columnsRef = useRef(columns);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  // Filters
+  const [query, setQuery] = useState("");
+  const [hideRejected, setHideRejected] = useState(false);
+  const [hideHired, setHideHired] = useState(false);
 
   useEffect(() => {
     columnsRef.current = columns;
@@ -99,17 +122,6 @@ export default function PipelineBoard() {
   useEffect(() => {
     refresh();
   }, []);
-
-  const counts = useMemo(
-    () => ({
-      APPLIED: columns.APPLIED.length,
-      INTERVIEW: columns.INTERVIEW.length,
-      OFFER: columns.OFFER.length,
-      HIRED: columns.HIRED.length,
-      REJECTED: columns.REJECTED.length,
-    }),
-    [columns]
-  );
 
   async function persistColumns(next: ColumnsState) {
     setSaving(true);
@@ -203,6 +215,34 @@ export default function PipelineBoard() {
     await persistColumns(columnsRef.current);
   }
 
+  const q = query.trim().toLowerCase();
+
+  // IMPORTANT: We filter for rendering only; we do NOT mutate "columns" (DnD source of truth).
+  const filteredColumns = useMemo<ColumnsState>(() => {
+    const next = emptyColumns();
+
+    for (const stage of Object.keys(columns) as ApplicationStage[]) {
+      // Hide toggles
+      if (hideRejected && stage === "REJECTED") continue;
+      if (hideHired && stage === "HIRED") continue;
+
+      next[stage] = columns[stage].filter((a) => matchesQuery(a, q));
+    }
+
+    return next;
+  }, [columns, q, hideRejected, hideHired]);
+
+  const filteredCounts = useMemo(() => {
+    const c: Record<ApplicationStage, number> = {
+      APPLIED: filteredColumns.APPLIED.length,
+      INTERVIEW: filteredColumns.INTERVIEW.length,
+      OFFER: filteredColumns.OFFER.length,
+      HIRED: filteredColumns.HIRED.length,
+      REJECTED: filteredColumns.REJECTED.length,
+    };
+    return c;
+  }, [filteredColumns]);
+
   if (loading) return <p>Loading…</p>;
 
   return (
@@ -214,11 +254,59 @@ export default function PipelineBoard() {
         onSaved={refresh}
       />
 
-      <div className="mb-3 flex items-center gap-3 text-sm opacity-80">
-        <span>Drag cards to move/reorder. Click a card to edit.</span>
-        {saving ? <span className="opacity-100">Saving…</span> : null}
+      {/* Controls */}
+      <div className="mb-4 flex flex-col gap-3">
+        <div className="flex items-center gap-3 text-sm opacity-80">
+          <span>Drag to move/reorder. Click a card to edit.</span>
+          {saving ? <span className="opacity-100">Saving…</span> : null}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <input
+            className="w-full sm:w-[380px] border rounded p-2"
+            placeholder="Search company, title, location, notes…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={hideRejected}
+              onChange={(e) => setHideRejected(e.target.checked)}
+            />
+            Hide Rejected
+          </label>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={hideHired}
+              onChange={(e) => setHideHired(e.target.checked)}
+            />
+            Hide Hired
+          </label>
+
+          <button
+            className="sm:ml-auto border rounded px-3 py-2 text-sm"
+            onClick={() => {
+              setQuery("");
+              setHideRejected(true);
+              setHideHired(false);
+            }}
+          >
+            Reset
+          </button>
+        </div>
+
+        {(query.trim() || hideRejected || hideHired) && (
+          <div className="text-xs opacity-70">
+            Tip: Drag/drop still saves. If you want to reorder precisely, clear search first.
+          </div>
+        )}
       </div>
 
+      {/* Board */}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -226,19 +314,25 @@ export default function PipelineBoard() {
         onDragEnd={onDragEnd}
       >
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {STAGES.map((s) => (
-            <Column
-              key={s.key}
-              stage={s.key}
-              label={s.label}
-              count={counts[s.key]}
-              items={columns[s.key]}
-              onOpen={(id) => {
-                setSelectedId(id);
-                setDrawerOpen(true);
-              }}
-            />
-          ))}
+          {STAGES.map((s) => {
+            // Skip hidden stages
+            if (hideRejected && s.key === "REJECTED") return null;
+            if (hideHired && s.key === "HIRED") return null;
+
+            return (
+              <Column
+                key={s.key}
+                stage={s.key}
+                label={s.label}
+                count={filteredCounts[s.key]}
+                items={filteredColumns[s.key]}
+                onOpen={(id) => {
+                  setSelectedId(id);
+                  setDrawerOpen(true);
+                }}
+              />
+            );
+          })}
         </div>
       </DndContext>
     </div>
@@ -281,8 +375,7 @@ function Column(props: {
 }
 
 function Card({ app, onOpen }: { app: Application; onOpen: (id: number) => void }) {
-  // IMPORTANT: Put drag listeners on a small handle, not the entire card.
-  // This makes clicking to edit reliable.
+  // drag handle only (so clicking opens editor reliably)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: String(app.id) });
 
@@ -293,11 +386,7 @@ function Card({ app, onOpen }: { app: Application; onOpen: (id: number) => void 
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="rounded-md border p-3 bg-white"
-    >
+    <div ref={setNodeRef} style={style} className="rounded-md border p-3 bg-white">
       <div className="flex items-start gap-2">
         <button
           className="border rounded px-2 py-1 text-xs opacity-80"
@@ -309,10 +398,7 @@ function Card({ app, onOpen }: { app: Application; onOpen: (id: number) => void 
           ::
         </button>
 
-        <div
-          className="flex-1 cursor-pointer"
-          onClick={() => onOpen(app.id)}
-        >
+        <div className="flex-1 cursor-pointer" onClick={() => onOpen(app.id)}>
           <div className="font-semibold">{app.title}</div>
           <div className="text-sm opacity-80">{app.company}</div>
 
