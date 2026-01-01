@@ -1,26 +1,485 @@
 @import "tailwindcss";
 
+/* =========================
+   Windows 95 Desktop Theme
+   ========================= */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Win95 palette */
+  --desk: #008080;         /* teal desktop */
+  --win: #c0c0c0;          /* window face */
+  --panel: #e0e0e0;        /* inner panel */
+  --dark: #808080;         /* shadow */
+  --darker: #404040;       /* deep shadow */
+  --light: #ffffff;        /* highlight */
+  --text: #000000;         /* text */
+  --title: #000080;        /* title bar blue */
+  --titleText: #ffffff;    /* title text */
+
+  /* typography */
+  --font95: "MS Sans Serif", Tahoma, Arial, sans-serif;
+
+  /* sizing */
+  --border: 2px;
+  --taskbar-h: 40px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Basic reset (keep it simple + retro) */
+* {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: var(--desk);
+  color: var(--text);
+  font-family: var(--font95);
+  font-size: 13px;
+  line-height: 1.35;
+
+  /* Prevent modern smooth look */
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: auto;
+  image-rendering: pixelated;
+}
+
+/* Remove modern link styling (NO blue links) */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* =========================
+   Win95 utilities
+   ========================= */
+
+.win95-bevel {
+  background: var(--win);
+  border-top: var(--border) solid var(--light);
+  border-left: var(--border) solid var(--light);
+  border-right: var(--border) solid var(--dark);
+  border-bottom: var(--border) solid var(--dark);
+}
+
+.win95-bevel-inset {
+  background: var(--win);
+  border-top: var(--border) solid var(--dark);
+  border-left: var(--border) solid var(--dark);
+  border-right: var(--border) solid var(--light);
+  border-bottom: var(--border) solid var(--light);
+}
+
+.win95-panel {
+  background: var(--panel);
+  border-top: 1px solid var(--light);
+  border-left: 1px solid var(--light);
+  border-right: 1px solid var(--dark);
+  border-bottom: 1px solid var(--dark);
+}
+
+/* =========================
+   Buttons (raised + pressed)
+   ========================= */
+
+button,
+.win95-btn {
+  font-family: var(--font95);
+  font-size: 13px;
+  background: var(--win);
+  color: var(--text);
+  padding: 6px 10px;
+  cursor: pointer;
+
+  border-top: var(--border) solid var(--light);
+  border-left: var(--border) solid var(--light);
+  border-right: var(--border) solid var(--dark);
+  border-bottom: var(--border) solid var(--dark);
+
+  outline: none;
+}
+
+button:active,
+.win95-btn:active {
+  border-top: var(--border) solid var(--dark);
+  border-left: var(--border) solid var(--dark);
+  border-right: var(--border) solid var(--light);
+  border-bottom: var(--border) solid var(--light);
+}
+
+button:disabled,
+.win95-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  color: var(--darker);
+}
+
+/* Focus rectangle like classic UI */
+button:focus-visible,
+.win95-btn:focus-visible {
+  outline: 1px dotted #000;
+  outline-offset: -4px;
+}
+
+/* Inputs */
+input,
+textarea,
+select {
+  font-family: var(--font95);
+  font-size: 13px;
+  background: #fff;
+  color: #000;
+  padding: 6px 8px;
+
+  border-top: var(--border) solid var(--dark);
+  border-left: var(--border) solid var(--dark);
+  border-right: var(--border) solid var(--light);
+  border-bottom: var(--border) solid var(--light);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 1px dotted #000;
+  outline-offset: -3px;
+}
+
+/* Tables look like old apps */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+th,
+td {
+  padding: 6px 8px;
+  border: 1px solid #b0b0b0;
+  vertical-align: top;
+}
+
+th {
+  background: var(--win);
+  font-weight: 700;
+}
+
+/* =========================
+   Desktop + Taskbar shells
+   ========================= */
+
+.desktop {
+  position: relative;
+  min-height: 100vh;
+  padding: 14px;
+  padding-bottom: calc(var(--taskbar-h) + 14px);
+}
+
+.taskbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--taskbar-h);
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
+
+  background: var(--win);
+  border-top: var(--border) solid var(--light);
+  border-left: var(--border) solid var(--light);
+  border-right: var(--border) solid var(--dark);
+  border-bottom: var(--border) solid var(--dark);
+}
+
+.taskbar .start {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.taskbar .clock {
+  margin-left: auto;
+  padding: 4px 8px;
+}
+
+/* =========================
+   Desktop Icons
+   ========================= */
+
+.desktop-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 96px);
+  gap: 14px;
+  align-content: start;
+}
+
+.desktop-icon {
+  width: 96px;
+  text-align: center;
+  color: #fff;
+  user-select: none;
+}
+
+.desktop-icon .icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 6px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+}
+
+
+.desktop-icon .label {
+  padding: 2px 4px;
+  display: inline-block;
+}
+
+.desktop-icon:focus-visible .label,
+.desktop-icon.selected .label {
+  background: rgba(0, 0, 0, 0.55);
+  outline: 1px dotted #fff;
+}
+
+/* =========================
+   Window chrome
+   ========================= */
+
+.win95-window {
+  background: var(--win);
+  border-top: var(--border) solid var(--light);
+  border-left: var(--border) solid var(--light);
+  border-right: var(--border) solid var(--dark);
+  border-bottom: var(--border) solid var(--dark);
+}
+
+.win95-titlebar {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 8px;
+
+  background: var(--title);
+  color: var(--titleText);
+  font-weight: 700;
+}
+
+.win95-titlebar .spacer {
+  flex: 1;
+}
+
+.win95-titlebar .controls {
+  display: flex;
+  gap: 4px;
+}
+
+.win95-titlebar .ctrl-btn {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+
+  background: var(--win);
+  color: #000;
+
+  border-top: 1px solid var(--light);
+  border-left: 1px solid var(--light);
+  border-right: 1px solid var(--dark);
+  border-bottom: 1px solid var(--dark);
+
+  font-weight: 900;
+  line-height: 1;
+}
+
+.win95-content {
+  padding: 10px;
+}
+
+.win95-statusbar {
+  padding: 6px 8px;
+  border-top: 1px solid var(--dark);
+  background: var(--win);
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+}
+
+/* =========================
+   Fake loading dialog
+   ========================= */
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.15);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+}
+
+.loading-dialog {
+  width: min(420px, calc(100vw - 28px));
+}
+
+.loading-body {
+  padding: 16px 14px;
+  background: var(--win);
+}
+
+.loading-bar {
+  margin-top: 12px;
+  height: 14px;
+  background: #fff;
+  border-top: 2px solid var(--dark);
+  border-left: 2px solid var(--dark);
+  border-right: 2px solid var(--light);
+  border-bottom: 2px solid var(--light);
+  overflow: hidden;
+}
+
+.loading-bar .fill {
+  height: 100%;
+  width: 35%;
+  background: #000;
+  animation: win95load 900ms linear infinite;
+}
+
+@keyframes win95load {
+  0% { transform: translateX(-40%); }
+  100% { transform: translateX(320%); }
+}
+
+/* =========================
+   Start Menu
+   ========================= */
+
+.start-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(var(--taskbar-h) - 6px);
+  width: 240px;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  z-index: 200;
+}
+
+.start-menu-stripe {
+  background: #000080;
+  border-right: 1px solid var(--dark);
+  display: grid;
+  align-items: end;
+  padding: 6px 4px;
+}
+
+.start-menu-stripe-text {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: 1px;
+  font-size: 12px;
+}
+
+.start-menu-items {
+  background: var(--win);
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+}
+
+.start-menu-item {
+  display: block;
+  padding: 6px 8px;
+  color: #000;
+  text-decoration: none;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.start-menu-item:hover {
+  background: #000080;
+  color: #fff;
+}
+
+.start-menu-item:focus-visible {
+  outline: 1px dotted #000;
+  outline-offset: -3px;
+}
+
+.start-menu-sep {
+  height: 2px;
+  background: var(--dark);
+  border-bottom: 1px solid var(--light);
+  margin: 4px 0;
+}
+
+/* =========================
+   Desktop layout (center window)
+   ========================= */
+.desktop-layout {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.desktop-left {
+  padding-top: 6px;
+}
+
+.desktop-main {
+  display: flex;
+  justify-content: center; /* centers the window */
+}
+
+.win95-window-centered {
+  width: min(1100px, calc(100vw - 200px));
+}
+
+/* =========================
+   Pipeline scrolling helpers
+   ========================= */
+
+/* Board container: fixed height so columns can scroll */
+.pipeline-board {
+  height: calc(100vh - var(--taskbar-h) - 140px);
+  min-height: 420px;
+  overflow: hidden;
+}
+
+/* The row of columns */
+.pipeline-columns {
+  height: 100%;
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+/* Each column: fixed height, internal scroll */
+.pipeline-col {
+  flex: 0 0 280px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Column header stays, cards scroll */
+.pipeline-col-body {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
 }

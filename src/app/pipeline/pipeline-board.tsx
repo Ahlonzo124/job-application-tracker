@@ -21,6 +21,10 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import ApplicationDrawer from "@/components/ApplicationDrawer";
 
+/* =========================
+   Constants
+   ========================= */
+
 const STAGES: { key: ApplicationStage; label: string }[] = [
   { key: "APPLIED", label: "Applied" },
   { key: "INTERVIEW", label: "Interview" },
@@ -51,7 +55,7 @@ function buildColumns(apps: Application[]): ColumnsState {
 }
 
 function isStageId(id: string): id is ApplicationStage {
-  return (STAGES.map((s) => s.key) as string[]).includes(id);
+  return STAGES.map((s) => s.key).includes(id as ApplicationStage);
 }
 
 function findContainer(columns: ColumnsState, id: string): ApplicationStage | null {
@@ -71,37 +75,23 @@ function findIndexById(list: Application[], id: string) {
   return list.findIndex((a) => a.id === num);
 }
 
-function matchesQuery(app: Application, q: string) {
-  if (!q) return true;
-  const hay = [
-    app.company ?? "",
-    app.title ?? "",
-    app.location ?? "",
-    app.jobType ?? "",
-    app.workMode ?? "",
-    app.seniority ?? "",
-    app.notes ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  return hay.includes(q);
-}
+/* =========================
+   Component
+   ========================= */
 
 export default function PipelineBoard() {
   const [columns, setColumns] = useState<ColumnsState>(emptyColumns());
   const columnsRef = useRef(columns);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Drawer state
+  // 🔍 SEARCH
+  const [query, setQuery] = useState("");
+
+  // Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-
-  // Filters
-  const [query, setQuery] = useState("");
-  const [hideRejected, setHideRejected] = useState(false);
-  const [hideHired, setHideHired] = useState(false);
 
   useEffect(() => {
     columnsRef.current = columns;
@@ -126,7 +116,7 @@ export default function PipelineBoard() {
   async function persistColumns(next: ColumnsState) {
     setSaving(true);
     try {
-      const r = await fetch("/api/board/reorder", {
+      await fetch("/api/board/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -139,11 +129,6 @@ export default function PipelineBoard() {
           },
         }),
       });
-
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) {
-        await refresh();
-      }
     } finally {
       setSaving(false);
     }
@@ -157,31 +142,22 @@ export default function PipelineBoard() {
     const overId = String(over.id);
 
     const current = columnsRef.current;
-    const activeContainer = findContainer(current, activeId);
-    const overContainer = findContainer(current, overId);
+    const from = findContainer(current, activeId);
+    const to = findContainer(current, overId);
 
-    if (!activeContainer || !overContainer || activeContainer === overContainer) return;
+    if (!from || !to || from === to) return;
 
     setColumns((prev) => {
-      const source = [...prev[activeContainer]];
-      const dest = [...prev[overContainer]];
+      const source = [...prev[from]];
+      const dest = [...prev[to]];
 
-      const sourceIndex = findIndexById(source, activeId);
-      if (sourceIndex === -1) return prev;
+      const idx = findIndexById(source, activeId);
+      if (idx === -1) return prev;
 
-      const [moving] = source.splice(sourceIndex, 1);
+      const [moving] = source.splice(idx, 1);
+      dest.push({ ...moving, stage: to });
 
-      const insertAt = isStageId(overId)
-        ? dest.length
-        : Math.max(findIndexById(dest, overId), 0);
-
-      dest.splice(insertAt, 0, { ...moving, stage: overContainer });
-
-      return {
-        ...prev,
-        [activeContainer]: source,
-        [overContainer]: dest,
-      };
+      return { ...prev, [from]: source, [to]: dest };
     });
   }
 
@@ -189,23 +165,22 @@ export default function PipelineBoard() {
     const { active, over } = event;
     if (!over) return;
 
-    const activeId = String(active.id);
+    const id = String(active.id);
     const overId = String(over.id);
 
     const current = columnsRef.current;
-    const activeContainer = findContainer(current, activeId);
-    const overContainer = findContainer(current, overId);
+    const stage = findContainer(current, id);
+    const overStage = findContainer(current, overId);
 
-    if (!activeContainer || !overContainer) return;
+    if (!stage || !overStage) return;
 
-    if (activeContainer === overContainer) {
-      const items = current[activeContainer];
-      const oldIndex = findIndexById(items, activeId);
-      const newIndex = isStageId(overId) ? items.length - 1 : findIndexById(items, overId);
-
+    if (stage === overStage) {
+      const items = current[stage];
+      const oldIndex = findIndexById(items, id);
+      const newIndex = findIndexById(items, overId);
       if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
         const moved = arrayMove(items, oldIndex, newIndex);
-        const next = { ...current, [activeContainer]: moved };
+        const next = { ...current, [stage]: moved };
         setColumns(next);
         await persistColumns(next);
         return;
@@ -215,38 +190,27 @@ export default function PipelineBoard() {
     await persistColumns(columnsRef.current);
   }
 
-  const q = query.trim().toLowerCase();
+  // 🔍 FILTERED VIEW (does NOT mutate source columns)
+  const filteredColumns = useMemo(() => {
+    if (!query.trim()) return columns;
 
-  // IMPORTANT: We filter for rendering only; we do NOT mutate "columns" (DnD source of truth).
-  const filteredColumns = useMemo<ColumnsState>(() => {
-    const next = emptyColumns();
+    const q = query.toLowerCase();
 
-    for (const stage of Object.keys(columns) as ApplicationStage[]) {
-      // Hide toggles
-      if (hideRejected && stage === "REJECTED") continue;
-      if (hideHired && stage === "HIRED") continue;
+    const filter = (a: Application) =>
+      a.company.toLowerCase().includes(q) ||
+      a.title.toLowerCase().includes(q);
 
-      next[stage] = columns[stage].filter((a) => matchesQuery(a, q));
+    const out = emptyColumns();
+    for (const s of Object.keys(columns) as ApplicationStage[]) {
+      out[s] = columns[s].filter(filter);
     }
+    return out;
+  }, [columns, query]);
 
-    return next;
-  }, [columns, q, hideRejected, hideHired]);
-
-  const filteredCounts = useMemo(() => {
-    const c: Record<ApplicationStage, number> = {
-      APPLIED: filteredColumns.APPLIED.length,
-      INTERVIEW: filteredColumns.INTERVIEW.length,
-      OFFER: filteredColumns.OFFER.length,
-      HIRED: filteredColumns.HIRED.length,
-      REJECTED: filteredColumns.REJECTED.length,
-    };
-    return c;
-  }, [filteredColumns]);
-
-  if (loading) return <p>Loading…</p>;
+  if (loading) return <div>Loading…</div>;
 
   return (
-    <div>
+    <>
       <ApplicationDrawer
         open={drawerOpen}
         applicationId={selectedId}
@@ -254,55 +218,22 @@ export default function PipelineBoard() {
         onSaved={refresh}
       />
 
-      {/* Controls */}
-      <div className="mb-4 flex flex-col gap-3">
-        <div className="flex items-center gap-3 text-sm opacity-80">
-          <span>Drag to move/reorder. Click a card to edit.</span>
-          {saving ? <span className="opacity-100">Saving…</span> : null}
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-          <input
-            className="w-full sm:w-[380px] border rounded p-2"
-            placeholder="Search company, title, location, notes…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={hideRejected}
-              onChange={(e) => setHideRejected(e.target.checked)}
-            />
-            Hide Rejected
-          </label>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={hideHired}
-              onChange={(e) => setHideHired(e.target.checked)}
-            />
-            Hide Hired
-          </label>
-
-          <button
-            className="sm:ml-auto border rounded px-3 py-2 text-sm"
-            onClick={() => {
-              setQuery("");
-              setHideRejected(true);
-              setHideHired(false);
-            }}
-          >
-            Reset
+      {/* 🔍 SEARCH BAR */}
+      <div
+        className="win95-panel"
+        style={{ padding: 8, marginBottom: 8, display: "flex", gap: 8 }}
+      >
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search company or title..."
+          className="win95-input"
+          style={{ flex: 1 }}
+        />
+        {query && (
+          <button className="win95-btn" onClick={() => setQuery("")}>
+            Clear
           </button>
-        </div>
-
-        {(query.trim() || hideRejected || hideHired) && (
-          <div className="text-xs opacity-70">
-            Tip: Drag/drop still saves. If you want to reorder precisely, clear search first.
-          </div>
         )}
       </div>
 
@@ -313,69 +244,87 @@ export default function PipelineBoard() {
         onDragOver={onDragOver}
         onDragEnd={onDragEnd}
       >
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {STAGES.map((s) => {
-            // Skip hidden stages
-            if (hideRejected && s.key === "REJECTED") return null;
-            if (hideHired && s.key === "HIRED") return null;
-
-            return (
-              <Column
-                key={s.key}
-                stage={s.key}
-                label={s.label}
-                count={filteredCounts[s.key]}
-                items={filteredColumns[s.key]}
-                onOpen={(id) => {
-                  setSelectedId(id);
-                  setDrawerOpen(true);
-                }}
-              />
-            );
-          })}
+        <div className="pipeline-columns">
+          {STAGES.map((s) => (
+            <Column
+              key={s.key}
+              stage={s.key}
+              label={s.label}
+              items={filteredColumns[s.key]}
+              onOpen={(id) => {
+                setSelectedId(id);
+                setDrawerOpen(true);
+              }}
+            />
+          ))}
         </div>
       </DndContext>
-    </div>
+
+      {saving && (
+        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+          Saving…
+        </div>
+      )}
+    </>
   );
 }
 
-function Column(props: {
+/* =========================
+   Column
+   ========================= */
+
+function Column({
+  stage,
+  label,
+  items,
+  onOpen,
+}: {
   stage: ApplicationStage;
   label: string;
-  count: number;
   items: Application[];
   onOpen: (id: number) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: props.stage });
-  const ids = props.items.map((a) => String(a.id));
+  const { setNodeRef, isOver } = useDroppable({ id: stage });
+  const ids = items.map((a) => String(a.id));
 
   return (
     <section
       ref={setNodeRef}
-      className={`rounded-lg border p-3 min-h-[120px] ${isOver ? "bg-black/5" : ""}`}
+      className="pipeline-col win95-panel"
+      style={{ background: isOver ? "#dcdcdc" : undefined }}
     >
-      <h2 className="font-medium mb-3 flex justify-between">
-        <span>{props.label}</span>
-        <span className="text-sm opacity-60">{props.count}</span>
-      </h2>
+      <div
+        style={{
+          fontWeight: 900,
+          marginBottom: 6,
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <span>{label}</span>
+        <span style={{ opacity: 0.6 }}>{items.length}</span>
+      </div>
 
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <div className="space-y-3">
-          {props.items.map((a) => (
-            <Card key={a.id} app={a} onOpen={props.onOpen} />
+        <div className="pipeline-col-body">
+          {items.map((a) => (
+            <Card key={a.id} app={a} onOpen={onOpen} />
           ))}
         </div>
       </SortableContext>
 
-      {props.items.length === 0 && (
-        <div className="mt-3 text-sm opacity-60">Drop here</div>
+      {items.length === 0 && (
+        <div style={{ fontSize: 12, opacity: 0.6 }}>Drop here</div>
       )}
     </section>
   );
 }
 
+/* =========================
+   Card
+   ========================= */
+
 function Card({ app, onOpen }: { app: Application; onOpen: (id: number) => void }) {
-  // drag handle only (so clicking opens editor reliably)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: String(app.id) });
 
@@ -386,33 +335,38 @@ function Card({ app, onOpen }: { app: Application; onOpen: (id: number) => void 
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="rounded-md border p-3 bg-white">
-      <div className="flex items-start gap-2">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="win95-bevel"
+      onClick={() => onOpen(app.id)}
+    >
+      <div style={{ display: "flex", gap: 6 }}>
         <button
-          className="border rounded px-2 py-1 text-xs opacity-80"
-          title="Drag"
+          className="win95-btn"
           {...attributes}
           {...listeners}
           onClick={(e) => e.stopPropagation()}
+          style={{ padding: "2px 6px" }}
+          title="Drag"
         >
           ::
         </button>
 
-        <div className="flex-1 cursor-pointer" onClick={() => onOpen(app.id)}>
-          <div className="font-semibold">{app.title}</div>
-          <div className="text-sm opacity-80">{app.company}</div>
-
-          {app.url ? (
+        <div>
+          <div style={{ fontWeight: 700 }}>{app.title}</div>
+          <div style={{ fontSize: 12, opacity: 0.8 }}>{app.company}</div>
+          {app.url && (
             <a
-              className="text-sm underline mt-1 block"
               href={app.url}
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
+              style={{ fontSize: 12, textDecoration: "underline" }}
             >
               Job link
             </a>
-          ) : null}
+          )}
         </div>
       </div>
     </div>
