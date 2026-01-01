@@ -19,6 +19,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import ApplicationDrawer from "@/components/ApplicationDrawer";
 
 const STAGES: { key: ApplicationStage; label: string }[] = [
   { key: "APPLIED", label: "Applied" },
@@ -76,6 +77,9 @@ export default function PipelineBoard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
   useEffect(() => {
     columnsRef.current = columns;
   }, [columns]);
@@ -96,18 +100,21 @@ export default function PipelineBoard() {
     refresh();
   }, []);
 
-  const counts = useMemo(() => ({
-    APPLIED: columns.APPLIED.length,
-    INTERVIEW: columns.INTERVIEW.length,
-    OFFER: columns.OFFER.length,
-    HIRED: columns.HIRED.length,
-    REJECTED: columns.REJECTED.length,
-  }), [columns]);
+  const counts = useMemo(
+    () => ({
+      APPLIED: columns.APPLIED.length,
+      INTERVIEW: columns.INTERVIEW.length,
+      OFFER: columns.OFFER.length,
+      HIRED: columns.HIRED.length,
+      REJECTED: columns.REJECTED.length,
+    }),
+    [columns]
+  );
 
   async function persistColumns(next: ColumnsState) {
     setSaving(true);
     try {
-      await fetch("/api/board/reorder", {
+      const r = await fetch("/api/board/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -120,6 +127,11 @@ export default function PipelineBoard() {
           },
         }),
       });
+
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) {
+        await refresh();
+      }
     } finally {
       setSaving(false);
     }
@@ -146,6 +158,7 @@ export default function PipelineBoard() {
       if (sourceIndex === -1) return prev;
 
       const [moving] = source.splice(sourceIndex, 1);
+
       const insertAt = isStageId(overId)
         ? dest.length
         : Math.max(findIndexById(dest, overId), 0);
@@ -176,9 +189,7 @@ export default function PipelineBoard() {
     if (activeContainer === overContainer) {
       const items = current[activeContainer];
       const oldIndex = findIndexById(items, activeId);
-      const newIndex = isStageId(overId)
-        ? items.length - 1
-        : findIndexById(items, overId);
+      const newIndex = isStageId(overId) ? items.length - 1 : findIndexById(items, overId);
 
       if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
         const moved = arrayMove(items, oldIndex, newIndex);
@@ -196,9 +207,16 @@ export default function PipelineBoard() {
 
   return (
     <div>
+      <ApplicationDrawer
+        open={drawerOpen}
+        applicationId={selectedId}
+        onClose={() => setDrawerOpen(false)}
+        onSaved={refresh}
+      />
+
       <div className="mb-3 flex items-center gap-3 text-sm opacity-80">
-        <span>Drag cards to move/reorder.</span>
-        {saving && <span className="opacity-100">Saving…</span>}
+        <span>Drag cards to move/reorder. Click a card to edit.</span>
+        {saving ? <span className="opacity-100">Saving…</span> : null}
       </div>
 
       <DndContext
@@ -215,6 +233,10 @@ export default function PipelineBoard() {
               label={s.label}
               count={counts[s.key]}
               items={columns[s.key]}
+              onOpen={(id) => {
+                setSelectedId(id);
+                setDrawerOpen(true);
+              }}
             />
           ))}
         </div>
@@ -223,14 +245,15 @@ export default function PipelineBoard() {
   );
 }
 
-function Column({ stage, label, count, items }: {
+function Column(props: {
   stage: ApplicationStage;
   label: string;
   count: number;
   items: Application[];
+  onOpen: (id: number) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: stage });
-  const ids = items.map((a) => String(a.id));
+  const { setNodeRef, isOver } = useDroppable({ id: props.stage });
+  const ids = props.items.map((a) => String(a.id));
 
   return (
     <section
@@ -238,54 +261,74 @@ function Column({ stage, label, count, items }: {
       className={`rounded-lg border p-3 min-h-[120px] ${isOver ? "bg-black/5" : ""}`}
     >
       <h2 className="font-medium mb-3 flex justify-between">
-        <span>{label}</span>
-        <span className="text-sm opacity-60">{count}</span>
+        <span>{props.label}</span>
+        <span className="text-sm opacity-60">{props.count}</span>
       </h2>
 
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <div className="space-y-3">
-          {items.map((a) => (
-            <Card key={a.id} app={a} />
+          {props.items.map((a) => (
+            <Card key={a.id} app={a} onOpen={props.onOpen} />
           ))}
         </div>
       </SortableContext>
 
-      {items.length === 0 && (
+      {props.items.length === 0 && (
         <div className="mt-3 text-sm opacity-60">Drop here</div>
       )}
     </section>
   );
 }
 
-function Card({ app }: { app: Application }) {
+function Card({ app, onOpen }: { app: Application; onOpen: (id: number) => void }) {
+  // IMPORTANT: Put drag listeners on a small handle, not the entire card.
+  // This makes clicking to edit reliable.
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: String(app.id) });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
 
   return (
     <div
       ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.6 : 1,
-      }}
+      style={style}
       className="rounded-md border p-3 bg-white"
-      {...attributes}
-      {...listeners}
     >
-      <div className="font-semibold">{app.title}</div>
-      <div className="text-sm opacity-80">{app.company}</div>
-      {app.url && (
-        <a
-          className="text-sm underline mt-1 block"
-          href={app.url}
-          target="_blank"
-          rel="noreferrer"
+      <div className="flex items-start gap-2">
+        <button
+          className="border rounded px-2 py-1 text-xs opacity-80"
+          title="Drag"
+          {...attributes}
+          {...listeners}
           onClick={(e) => e.stopPropagation()}
         >
-          Job link
-        </a>
-      )}
+          ::
+        </button>
+
+        <div
+          className="flex-1 cursor-pointer"
+          onClick={() => onOpen(app.id)}
+        >
+          <div className="font-semibold">{app.title}</div>
+          <div className="text-sm opacity-80">{app.company}</div>
+
+          {app.url ? (
+            <a
+              className="text-sm underline mt-1 block"
+              href={app.url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Job link
+            </a>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
