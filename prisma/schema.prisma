@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum ApplicationStage {
+  APPLIED
+  INTERVIEW
+  OFFER
+  HIRED
+}
+
+model Application {
+  id                      Int      @id @default(autoincrement())
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  company                 String
+  title                   String
+  location                String?
+  url                     String?
+
+  jobType                 String?
+  workMode                String?
+  seniority               String?
+
+  salaryMin               Float?
+  salaryMax               Float?
+  salaryCurrency          String?
+  salaryPeriod            String?
+
+  descriptionSummary      String?
+
+  keyRequirementsJson     String?
+  keyResponsibilitiesJson String?
+
+  stage                   ApplicationStage @default(APPLIED)
+  sortOrder               Int              @default(0)
+
+  notes                   String?
+  appliedDate             DateTime?
+}
