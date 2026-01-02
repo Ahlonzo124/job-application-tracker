@@ -3,6 +3,10 @@ import { z } from "zod";
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import * as cheerio from "cheerio";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/authOptions";
+
+export const runtime = "nodejs";
 
 /* ------------------------ CORS HELPERS ------------------------ */
 function withCors(resp: Response) {
@@ -57,15 +61,11 @@ async function fetchHtml(url: string) {
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     },
   });
 
-  if (!res.ok) {
-    throw new Error(`Fetch failed: ${res.status}`);
-  }
-
+  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
   return await res.text();
 }
 
@@ -107,9 +107,7 @@ function extractWithCheerio(html: string) {
     if (txt.length > best.length) best = txt;
   }
 
-  if (best.length < 200) {
-    best = cleanText($("body").text() || "");
-  }
+  if (best.length < 200) best = cleanText($("body").text() || "");
 
   return {
     title: cleanText($("title").text() || "") || null,
@@ -120,6 +118,15 @@ function extractWithCheerio(html: string) {
 /* ------------------------ HANDLER ------------------------ */
 export async function POST(req: Request) {
   try {
+    // ✅ AUTH GUARD
+    const session = await getServerSession(authOptions);
+    const userId = Number((session?.user as any)?.id);
+    if (!userId) {
+      return withCors(
+        NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+      );
+    }
+
     const input = InputSchema.parse(await req.json());
 
     /* -------- PASTE MODE (extension + fallback) -------- */
@@ -128,6 +135,7 @@ export async function POST(req: Request) {
 
       return withCors(
         NextResponse.json({
+          ok: true,
           source: "paste",
           blocked: false,
           titleGuess: null,
@@ -140,16 +148,14 @@ export async function POST(req: Request) {
     const url = input.url!;
     const html = await fetchHtml(url);
 
-    let extracted =
-      extractWithReadability(html, url) ?? extractWithCheerio(html);
+    const extracted = extractWithReadability(html, url) ?? extractWithCheerio(html);
 
-    if (!extracted || !extracted.text) {
-      throw new Error("Unable to extract readable content.");
-    }
+    if (!extracted || !extracted.text) throw new Error("Unable to extract readable content.");
 
     if (looksLikeLoginWall(extracted.text, extracted.title)) {
       return withCors(
         NextResponse.json({
+          ok: true,
           source: "blocked",
           blocked: true,
           reason: "LOGIN_REQUIRED",
@@ -162,6 +168,7 @@ export async function POST(req: Request) {
 
     return withCors(
       NextResponse.json({
+        ok: true,
         source: extracted.text.length > 500 ? "url_readability" : "url_fallback",
         blocked: false,
         titleGuess: extracted.title,
@@ -170,10 +177,7 @@ export async function POST(req: Request) {
     );
   } catch (err: any) {
     return withCors(
-      NextResponse.json(
-        { error: err?.message ?? "Unknown error" },
-        { status: 400 }
-      )
+      NextResponse.json({ ok: false, error: err?.message ?? "Unknown error" }, { status: 400 })
     );
   }
 }

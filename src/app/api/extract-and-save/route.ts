@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/authOptions";
+
+export const runtime = "nodejs";
 
 /* ------------------------ CORS HELPERS ------------------------ */
 function withCors(resp: Response) {
@@ -45,7 +49,10 @@ function asNumber(v: any): number | null {
 function asStringArray(v: any): string[] {
   if (!v) return [];
   if (Array.isArray(v)) {
-    return v.map((x) => String(x)).map((s) => s.trim()).filter(Boolean);
+    return v
+      .map((x) => String(x))
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
   return [];
 }
@@ -104,6 +111,15 @@ function normalizeUrl(raw: string | null): string | null {
 /* ------------------------ HANDLER ------------------------ */
 export async function POST(req: Request) {
   try {
+    // ✅ Require login for this endpoint
+    const session = await getServerSession(authOptions);
+    const userId = Number((session?.user as any)?.id);
+    if (!userId) {
+      return withCors(
+        NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+      );
+    }
+
     const body = await req.json();
 
     const base = new URL(req.url);
@@ -233,10 +249,10 @@ export async function POST(req: Request) {
     const finalUrl = normalizeUrl(rawUrl);
 
     /* ---------- 3) DUPLICATE CHECK ---------- */
-    // A) Strong match: same normalized URL
+    // A) Strong match: same normalized URL (scoped to user)
     if (finalUrl) {
       const existing = await prisma.application.findFirst({
-        where: { url: finalUrl },
+        where: { userId, url: finalUrl },
       });
 
       if (existing) {
@@ -251,9 +267,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // B) Fallback match: company + title (+ location)
+    // B) Fallback match: company + title (+ location) (scoped to user)
     const existingByFields = await prisma.application.findFirst({
       where: {
+        userId,
         company,
         title,
         ...(location ? { location } : {}),
@@ -274,6 +291,8 @@ export async function POST(req: Request) {
     /* ---------- 4) SAVE ---------- */
     const created = await prisma.application.create({
       data: {
+        userId, // ✅ attach ownership
+
         company,
         title,
 
@@ -301,6 +320,7 @@ export async function POST(req: Request) {
         })(),
 
         stage: "APPLIED",
+        sortOrder: 0,
         appliedDate: new Date(),
       },
     });

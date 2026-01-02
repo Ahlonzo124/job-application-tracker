@@ -1,6 +1,9 @@
-import DesktopNavLink from "@/components/DesktopNavLink";
+import { requireAuth } from "../lib/requireAuth";
+import DesktopNavLink from "../components/DesktopNavLink";
 
-export default function Home() {
+export default async function Home() {
+  await requireAuth();
+
   return (
     <div>
       <div className="win95-panel" style={{ padding: 10, marginBottom: 10 }}>
@@ -83,11 +86,7 @@ export default function Home() {
             <DesktopNavLink className="win95-btn" href="/pipeline" openLabel="Pipeline">
               Pipeline
             </DesktopNavLink>
-            <DesktopNavLink
-              className="win95-btn"
-              href="/applications"
-              openLabel="Applications"
-            >
+            <DesktopNavLink className="win95-btn" href="/applications" openLabel="Applications">
               Applications
             </DesktopNavLink>
             <DesktopNavLink className="win95-btn" href="/extract" openLabel="Extract Job">

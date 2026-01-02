@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import DesktopNavLink from "@/components/DesktopNavLink";
 import LoadingOverlay from "@/components/LoadingOverlay";
 import StartMenu from "@/components/StartMenu";
@@ -9,11 +10,23 @@ export default function DesktopShell({ children }: { children: React.ReactNode }
   const [loadingMsg, setLoadingMsg] = useState<string | null>(null);
   const [clock, setClock] = useState("");
 
+  const { data: session, status } = useSession();
+  const isAuthed = status === "authenticated";
+
+  const username =
+    (session?.user as any)?.username ||
+    (session?.user as any)?.name ||
+    (session?.user as any)?.email ||
+    (status === "loading" ? "Loading..." : "Guest");
+
+  const windowTitle =
+    isAuthed && username && username !== "Loading..." && username !== "Guest"
+      ? `Job Application Tracker — ${username}`
+      : "Job Application Tracker";
+
   useEffect(() => {
     const tick = () => {
-      setClock(
-        new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      );
+      setClock(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     };
     tick();
     const id = window.setInterval(tick, 1000);
@@ -35,53 +48,64 @@ export default function DesktopShell({ children }: { children: React.ReactNode }
           {/* Left: icons */}
           <div className="desktop-left">
             <div className="desktop-icons">
-              <DesktopIcon
-                label="Home"
-                href="/"
-                iconSrc="/icons/home.svg"
-                onOpen={setLoadingMsg}
-              />
+              {/* Always visible */}
+              <DesktopIcon label="Home" href="/" iconSrc="/icons/home.svg" onOpen={setLoadingMsg} />
 
-              <DesktopIcon
-                label="Pipeline"
-                href="/pipeline"
-                iconSrc="/icons/pipeline.svg"
-                onOpen={setLoadingMsg}
-              />
+              {isAuthed ? (
+                <>
+                  <DesktopIcon
+                    label="Pipeline"
+                    href="/pipeline"
+                    iconSrc="/icons/pipeline.svg"
+                    onOpen={setLoadingMsg}
+                  />
 
-              <DesktopIcon
-                label="Applications"
-                href="/applications"
-                iconSrc="/icons/applications.svg"
-                onOpen={setLoadingMsg}
-              />
+                  <DesktopIcon
+                    label="Applications"
+                    href="/applications"
+                    iconSrc="/icons/applications.svg"
+                    onOpen={setLoadingMsg}
+                  />
 
-              <DesktopIcon
-                label="Extract Job"
-                href="/extract"
-                iconSrc="/icons/extract.svg"
-                onOpen={setLoadingMsg}
-              />
+                  <DesktopIcon
+                    label="Extract Job"
+                    href="/extract"
+                    iconSrc="/icons/extract.svg"
+                    onOpen={setLoadingMsg}
+                  />
 
-              <DesktopIcon
-                label="Analytics"
-                href="/analytics"
-                iconSrc="/icons/analytics.svg"
-                onOpen={setLoadingMsg}
-              />
+                  <DesktopIcon
+                    label="Analytics"
+                    href="/analytics"
+                    iconSrc="/icons/analytics.svg"
+                    onOpen={setLoadingMsg}
+                  />
+                </>
+              ) : (
+                <>
+                  <DesktopIcon
+                    label="Login"
+                    href="/login"
+                    iconSrc="/icons/about.svg"
+                    onOpen={setLoadingMsg}
+                  />
+                  <DesktopIcon
+                    label="Sign Up"
+                    href="/signup"
+                    iconSrc="/icons/about.svg"
+                    onOpen={setLoadingMsg}
+                  />
+                </>
+              )}
 
-              <DesktopIcon
-                label="About"
-                href="/about"
-                iconSrc="/icons/about.svg"
-                onOpen={setLoadingMsg}
-              />
+              {/* Always visible */}
+              <DesktopIcon label="About" href="/about" iconSrc="/icons/about.svg" onOpen={setLoadingMsg} />
             </div>
           </div>
 
           {/* Right: centered window */}
           <div className="desktop-main">
-            <Window title="Job Application Tracker">{children}</Window>
+            <Window title={windowTitle}>{children}</Window>
           </div>
         </div>
       </div>
@@ -91,6 +115,10 @@ export default function DesktopShell({ children }: { children: React.ReactNode }
 
         <div className="win95-panel" style={{ padding: "6px 10px" }}>
           Job Tracker
+        </div>
+
+        <div className="win95-panel" style={{ padding: "6px 10px" }}>
+          User: <b>{username}</b>
         </div>
 
         <div className="clock win95-panel">{clock}</div>

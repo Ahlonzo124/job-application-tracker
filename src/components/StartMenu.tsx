@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import DesktopNavLink from "@/components/DesktopNavLink";
+import { signOut, useSession } from "next-auth/react";
 
 type Item = { label: string; href: string };
 
@@ -17,6 +18,12 @@ const ITEMS: Item[] = [
 export default function StartMenu({ onOpenApp }: { onOpenApp: (msg: string) => void }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  const { data: session, status } = useSession();
+  const isAuthed = status === "authenticated";
+
+  const username =
+    (session?.user as any)?.username || session?.user?.name || session?.user?.email || "Guest";
 
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
@@ -38,6 +45,11 @@ export default function StartMenu({ onOpenApp }: { onOpenApp: (msg: string) => v
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
+  async function handleLogout() {
+    setOpen(false);
+    await signOut({ callbackUrl: "/login" });
+  }
+
   return (
     <div ref={wrapRef} style={{ position: "relative" }}>
       <button
@@ -56,6 +68,19 @@ export default function StartMenu({ onOpenApp }: { onOpenApp: (msg: string) => v
           </div>
 
           <div className="start-menu-items">
+            {/* Who is logged in */}
+            <div
+              className="start-menu-item"
+              style={{ cursor: "default", opacity: 0.9 }}
+              role="menuitem"
+              aria-disabled="true"
+              onClick={(e) => e.preventDefault()}
+            >
+              User: <b>{username}</b>
+            </div>
+
+            <div className="start-menu-sep" />
+
             {ITEMS.map((it) => (
               <DesktopNavLink
                 key={it.href}
@@ -70,6 +95,49 @@ export default function StartMenu({ onOpenApp }: { onOpenApp: (msg: string) => v
                 {it.label}
               </DesktopNavLink>
             ))}
+
+            <div className="start-menu-sep" />
+
+            {/* Auth actions */}
+            {!isAuthed ? (
+              <DesktopNavLink
+                href="/signup"
+                openLabel="Create Account"
+                className="start-menu-item"
+                onNavigateStart={(msg) => {
+                  onOpenApp(msg);
+                  setOpen(false);
+                }}
+              >
+                Create Account
+              </DesktopNavLink>
+            ) : null}
+
+            <DesktopNavLink
+              href="/login"
+              openLabel="Switch User"
+              className="start-menu-item"
+              onNavigateStart={(msg) => {
+                onOpenApp(msg);
+                setOpen(false);
+              }}
+            >
+              Switch User
+            </DesktopNavLink>
+
+            {isAuthed ? (
+              <a
+                className="start-menu-item"
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleLogout();
+                }}
+                role="menuitem"
+              >
+                Log Out
+              </a>
+            ) : null}
 
             <div className="start-menu-sep" />
 

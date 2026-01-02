@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { z } from "zod";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/authOptions";
+
+export const runtime = "nodejs";
 
 /** Simple CORS (handy for extension/testing; harmless locally) */
 function withCors(resp: Response) {
@@ -27,18 +31,23 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
+    // ✅ AUTH GUARD (prevents burning your OpenAI quota)
+    const session = await getServerSession(authOptions);
+    const userId = Number((session?.user as any)?.id);
+    if (!userId) {
+      return withCors(
+        NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+      );
+    }
+
     if (!process.env.OPENAI_API_KEY) {
       return withCors(
-        NextResponse.json(
-          { error: "Missing OPENAI_API_KEY in .env.local" },
-          { status: 400 }
-        )
+        NextResponse.json({ ok: false, error: "Missing OPENAI_API_KEY in .env.local" }, { status: 400 })
       );
     }
 
     const input = InputSchema.parse(await req.json());
 
-    // Use Structured Outputs (JSON schema) so you reliably get parseable fields
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -72,14 +81,14 @@ export async function POST(req: Request) {
               company: { type: ["string", "null"] },
               title: { type: ["string", "null"] },
               location: { type: ["string", "null"] },
-              jobType: { type: ["string", "null"] }, // Full-time/Part-time/Contract/Intern/etc
-              workMode: { type: ["string", "null"] }, // On-site/Hybrid/Remote
+              jobType: { type: ["string", "null"] },
+              workMode: { type: ["string", "null"] },
               salaryMin: { type: ["number", "null"] },
               salaryMax: { type: ["number", "null"] },
-              salaryCurrency: { type: ["string", "null"] }, // USD/EUR...
-              salaryPeriod: { type: ["string", "null"] }, // hour/year/month
-              seniority: { type: ["string", "null"] }, // entry/mid/senior...
-              descriptionSummary: { type: ["string", "null"] }, // 3-6 lines
+              salaryCurrency: { type: ["string", "null"] },
+              salaryPeriod: { type: ["string", "null"] },
+              seniority: { type: ["string", "null"] },
+              descriptionSummary: { type: ["string", "null"] },
               keyRequirements: {
                 type: "array",
                 items: { type: "string" },
@@ -95,10 +104,10 @@ export async function POST(req: Request) {
                   company: { type: "number" },
                   title: { type: "number" },
                   location: { type: "number" },
-                  salary: { type: "number" }
+                  salary: { type: "number" },
                 },
-                required: ["company", "title", "location", "salary"]
-              }
+                required: ["company", "title", "location", "salary"],
+              },
             },
             required: [
               "company",
@@ -114,7 +123,7 @@ export async function POST(req: Request) {
               "descriptionSummary",
               "keyRequirements",
               "keyResponsibilities",
-              "confidence"
+              "confidence",
             ],
           },
           strict: true,
@@ -125,7 +134,6 @@ export async function POST(req: Request) {
     const content = response.choices[0]?.message?.content;
     if (!content) throw new Error("AI returned empty content.");
 
-    // content is guaranteed to be JSON that matches schema (for supported models)
     return withCors(
       NextResponse.json({
         ok: true,
@@ -134,10 +142,7 @@ export async function POST(req: Request) {
     );
   } catch (err: any) {
     return withCors(
-      NextResponse.json(
-        { error: err?.message ?? "Unknown error" },
-        { status: 400 }
-      )
+      NextResponse.json({ ok: false, error: err?.message ?? "Unknown error" }, { status: 400 })
     );
   }
 }

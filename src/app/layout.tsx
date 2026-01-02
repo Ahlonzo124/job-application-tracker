@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import DesktopShell from "@/components/DesktopShell";
+import Providers from "./providers";
 
 export const metadata: Metadata = {
   title: "Job Application Tracker",
@@ -11,7 +12,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <DesktopShell>{children}</DesktopShell>
+        <Providers>
+          <DesktopShell>{children}</DesktopShell>
+        </Providers>
       </body>
     </html>
   );

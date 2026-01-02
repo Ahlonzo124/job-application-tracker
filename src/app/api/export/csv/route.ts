@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/authOptions";
+
+export const runtime = "nodejs";
 
 function csvEscape(v: unknown) {
   const s = String(v ?? "");
@@ -8,7 +12,15 @@ function csvEscape(v: unknown) {
 }
 
 export async function GET() {
+  const session = await getServerSession(authOptions);
+  const userId = Number((session?.user as any)?.id);
+
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const apps = await prisma.application.findMany({
+    where: { userId }, // ✅ scope to user
     orderBy: [{ updatedAt: "desc" }],
   });
 
@@ -38,7 +50,9 @@ export async function GET() {
 
   const csv = [
     headers.join(","),
-    ...apps.map((a) => headers.map((h) => csvEscape((a as any)[h])).join(",")),
+    ...apps.map((a) =>
+      headers.map((h) => csvEscape((a as any)[h])).join(",")
+    ),
   ].join("\n");
 
   return new NextResponse(csv, {

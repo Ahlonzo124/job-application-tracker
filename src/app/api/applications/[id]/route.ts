@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ApplicationStage } from "@prisma/client";
 import { z } from "zod";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/authOptions";
+
+export const runtime = "nodejs";
 
 type PatchBody = {
   stage?: ApplicationStage;
@@ -38,13 +42,6 @@ const PutBodySchema = z.object({
   appliedDate: z.string().datetime().optional().nullable(),
 });
 
-function parseId(ctx: { params: Promise<{ id: string }> }) {
-  return ctx.params.then(({ id }) => {
-    const n = Number(id);
-    return Number.isNaN(n) ? null : n;
-  });
-}
-
 function normalizeApp(a: any) {
   return {
     ...a,
@@ -55,15 +52,35 @@ function normalizeApp(a: any) {
   };
 }
 
+async function getAuthedUserId() {
+  const session = await getServerSession(authOptions);
+  const userId = Number((session?.user as any)?.id);
+  return userId || null;
+}
+
+function parseId(ctx: { params: Promise<{ id: string }> }) {
+  return ctx.params.then(({ id }) => {
+    const n = Number(id);
+    return Number.isNaN(n) ? null : n;
+  });
+}
+
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const userId = await getAuthedUserId();
+  if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
   const id = await parseId(ctx);
   if (!id) return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
 
   try {
-    const app = await prisma.application.findUnique({ where: { id } });
+    const app = await prisma.application.findFirst({
+      where: { id, userId },
+    });
+
     if (!app) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }
+
     return NextResponse.json({ ok: true, application: normalizeApp(app) });
   } catch (e: any) {
     return NextResponse.json(
@@ -73,12 +90,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   }
 }
 
-export async function PATCH(
-  req: Request,
-  ctx: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const userId = await getAuthedUserId();
+  if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
   const id = await parseId(ctx);
-  if (!id) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  if (!id) return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
 
   const body = (await req.json().catch(() => ({}))) as PatchBody;
 
@@ -92,32 +109,39 @@ export async function PATCH(
   if (body.notes !== undefined) data.notes = body.notes;
 
   try {
-    const updated = await prisma.application.update({
-      where: { id },
+    // scoped update: only update if belongs to user
+    const updated = await prisma.application.updateMany({
+      where: { id, userId },
       data,
     });
 
-    return NextResponse.json(updated);
+    if (updated.count === 0) {
+      return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    }
+
+    const app = await prisma.application.findFirst({ where: { id, userId } });
+    return NextResponse.json({ ok: true, application: normalizeApp(app) });
   } catch (e: any) {
     return NextResponse.json(
-      { error: e?.message ?? "Update failed" },
+      { ok: false, error: e?.message ?? "Update failed" },
       { status: 400 }
     );
   }
 }
 
-export async function PUT(
-  req: Request,
-  ctx: { params: Promise<{ id: string }> }
-) {
+export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const userId = await getAuthedUserId();
+  if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
   const id = await parseId(ctx);
   if (!id) return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
 
   try {
     const input = PutBodySchema.parse(await req.json());
 
-    const updated = await prisma.application.update({
-      where: { id },
+    // Scoped update using updateMany so we can include userId in where
+    const updated = await prisma.application.updateMany({
+      where: { id, userId },
       data: {
         company: input.company,
         title: input.title,
@@ -136,9 +160,7 @@ export async function PUT(
 
         descriptionSummary: input.descriptionSummary ?? null,
 
-        keyRequirementsJson: input.keyRequirements
-          ? JSON.stringify(input.keyRequirements)
-          : null,
+        keyRequirementsJson: input.keyRequirements ? JSON.stringify(input.keyRequirements) : null,
         keyResponsibilitiesJson: input.keyResponsibilities
           ? JSON.stringify(input.keyResponsibilities)
           : null,
@@ -151,7 +173,12 @@ export async function PUT(
       },
     });
 
-    return NextResponse.json({ ok: true, application: normalizeApp(updated) });
+    if (updated.count === 0) {
+      return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    }
+
+    const app = await prisma.application.findFirst({ where: { id, userId } });
+    return NextResponse.json({ ok: true, application: normalizeApp(app) });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message ?? "Update failed" },
@@ -160,15 +187,22 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
-  _req: Request,
-  ctx: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const userId = await getAuthedUserId();
+  if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
   const id = await parseId(ctx);
   if (!id) return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
 
   try {
-    await prisma.application.delete({ where: { id } });
+    const deleted = await prisma.application.deleteMany({
+      where: { id, userId },
+    });
+
+    if (deleted.count === 0) {
+      return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json(

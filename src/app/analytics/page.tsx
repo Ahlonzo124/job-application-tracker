@@ -1,5 +1,9 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { prisma } from "@/lib/prisma";
 import { ApplicationStage } from "@prisma/client";
+import { requireAuth } from "../../lib/requireAuth";
 
 function stageLabel(s: ApplicationStage) {
   switch (s) {
@@ -17,8 +21,23 @@ function stageLabel(s: ApplicationStage) {
 }
 
 export default async function AnalyticsPage() {
+  const session = await requireAuth();
+  const userId = Number((session?.user as any)?.id);
+
+  // Safety net (shouldn't happen because requireAuth redirects)
+  if (!userId) {
+    return (
+      <div className="win95-panel" style={{ padding: 12 }}>
+        <div style={{ fontWeight: 900, marginBottom: 6 }}>Analytics</div>
+        <div style={{ fontSize: 12 }}>Unauthorized</div>
+      </div>
+    );
+  }
+
   const apps = await prisma.application.findMany({
-    select: { stage: true, createdAt: true },
+    where: { userId }, // ✅ scoped
+    select: { stage: true, createdAt: true, updatedAt: true, company: true, title: true, id: true },
+    orderBy: { createdAt: "asc" },
   });
 
   const total = apps.length;
@@ -39,6 +58,9 @@ export default async function AnalyticsPage() {
     count: counts[s],
     pct: total ? Math.round((counts[s] / total) * 100) : 0,
   }));
+
+  const active = total - counts.REJECTED - counts.HIRED;
+  const topStage = [...rows].sort((a, b) => b.count - a.count)[0]?.label ?? "—";
 
   return (
     <div>
@@ -81,11 +103,10 @@ export default async function AnalyticsPage() {
               <b>Total applications:</b> {total}
             </div>
             <div style={{ marginBottom: 6 }}>
-              <b>Active (not rejected):</b> {total - counts.REJECTED}
+              <b>Active:</b> {active}
             </div>
             <div>
-              <b>Top stage:</b>{" "}
-              {rows.sort((a, b) => b.count - a.count)[0]?.label ?? "—"}
+              <b>Top stage:</b> {topStage}
             </div>
           </div>
 

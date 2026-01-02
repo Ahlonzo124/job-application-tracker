@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ApplicationStage } from "@prisma/client";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/authOptions";
+
+export const runtime = "nodejs";
 
 const STAGES: ApplicationStage[] = ["APPLIED", "INTERVIEW", "OFFER", "HIRED", "REJECTED"];
 
@@ -12,7 +16,15 @@ function monthKey(d: Date) {
 
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions);
+    const userId = Number((session?.user as any)?.id);
+
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const apps = await prisma.application.findMany({
+      where: { userId }, // ✅ scope
       select: {
         id: true,
         stage: true,
