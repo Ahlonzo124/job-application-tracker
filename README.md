@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Job Tracker 95 🖥️📄
 
-## Getting Started
+A Windows-95–style job application tracker built with **Next.js**, **Prisma**, and **AI-powered job parsing**.
 
-First, run the development server:
+This project combines a functional job-tracking MVP with a retro desktop UI inspired by classic Windows operating systems.
 
+---
+
+## ✨ Features
+
+### 🧠 AI Job Parsing
+- Paste a job description or provide a URL
+- Chrome extension support for one-click job capture
+- Automatically extracts:
+  - Company
+  - Job title
+  - Location
+  - Salary range
+  - Job type / work mode
+  - Key requirements & responsibilities
+- Duplicate detection prevents saving the same job twice
+
+---
+
+### 🗂️ Application Management
+- Table view of all applications
+- Editable fields (notes, links, salary, stage)
+- CSV export (Excel-compatible)
+
+---
+
+### 📌 Pipeline Board
+- Visual Kanban pipeline:
+  - Applied → Interview → Offer → Hired → Rejected
+- Drag & drop cards between stages
+- Order and stage persist to database
+- Per-column scrolling for large pipelines
+- Search applications by company or title
+
+---
+
+### 🖥️ Windows-95 Desktop UI
+- Desktop icons (Home, Pipeline, Applications, Extract, Analytics, About)
+- Start menu with fake app-launch loading dialogs
+- Taskbar with clock and version display
+- Pixel-art icons and classic Win95 window chrome
+- “Welcome” Home app with step-by-step usage instructions
+
+---
+
+### 📊 Analytics
+- Application counts per stage
+- Percentage breakdown
+- Summary stats (active vs rejected)
+
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend**: Next.js (App Router), React, TypeScript
+- **Backend**: Next.js API Routes
+- **Database**: SQLite
+- **ORM**: Prisma v7 (`@prisma/adapter-better-sqlite3`)
+- **AI**: OpenAI (`gpt-4o-mini`)
+- **Drag & Drop**: @dnd-kit
+- **Styling**: Custom CSS (Windows 95 aesthetic)
+- **Browser Extension**: Chrome extension for job extraction
+
+---
+
+## 🚀 Getting Started
+
+### 1. Install dependencies
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+npm install
