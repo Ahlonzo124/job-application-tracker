@@ -18,6 +18,7 @@ declare global {
   // eslint-disable-next-line no-var
   var __JOB_TRACKER_INBOX__: Map<string, any> | undefined;
 }
+
 const inbox = globalThis.__JOB_TRACKER_INBOX__ ?? new Map<string, any>();
 globalThis.__JOB_TRACKER_INBOX__ = inbox;
 
@@ -44,16 +45,21 @@ export async function POST(req: Request) {
       extractedText: input.extractedText,
     });
 
-    // Optional cleanup: cap memory
+    // Optional cleanup: cap memory (type-safe)
     if (inbox.size > 50) {
-      const firstKey = inbox.keys().next().value;
-      inbox.delete(firstKey);
+      const first = inbox.keys().next();
+      if (!first.done) {
+        inbox.delete(first.value);
+      }
     }
 
     return withCors(NextResponse.json({ ok: true, token }));
   } catch (err: any) {
     return withCors(
-      NextResponse.json({ ok: false, error: err?.message ?? "Unknown error" }, { status: 400 })
+      NextResponse.json(
+        { ok: false, error: err?.message ?? "Unknown error" },
+        { status: 400 }
+      )
     );
   }
 }
@@ -64,21 +70,34 @@ export async function GET(req: Request) {
     const token = searchParams.get("token");
     if (!token) {
       return withCors(
-        NextResponse.json({ ok: false, error: "Missing token" }, { status: 400 })
+        NextResponse.json(
+          { ok: false, error: "Missing token" },
+          { status: 400 }
+        )
       );
     }
 
     const item = inbox.get(token);
     if (!item) {
       return withCors(
-        NextResponse.json({ ok: false, error: "Token not found (maybe expired/restarted server)" }, { status: 404 })
+        NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Token not found (maybe expired or server restarted)",
+          },
+          { status: 404 }
+        )
       );
     }
 
     return withCors(NextResponse.json({ ok: true, item }));
   } catch (err: any) {
     return withCors(
-      NextResponse.json({ ok: false, error: err?.message ?? "Unknown error" }, { status: 400 })
+      NextResponse.json(
+        { ok: false, error: err?.message ?? "Unknown error" },
+        { status: 400 }
+      )
     );
   }
 }
