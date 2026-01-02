@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
-import { authOptions } from "../../../../lib/authOptions";
+import { authOptions } from "@/lib/authOptions";
 
-export const runtime = "nodejs"; // required for bcrypt + sqlite adapter
+export const runtime = "nodejs"; // required for bcrypt
 
 const handler = NextAuth(authOptions);
 
