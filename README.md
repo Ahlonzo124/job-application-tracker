@@ -1,75 +1,93 @@
-# Job Tracker 95 🖥️📄
+# Job Tracker 95 (v0.3.1)
 
-A Windows-95–style job application tracker built with **Next.js**, **Prisma**, and **AI-powered job parsing**.
+A Windows-95–style **Job Application Tracker** that behaves like a desktop OS.
+Track job applications in a pipeline, extract job postings with AI, and export everything to CSV.
 
-This project combines a functional job-tracking MVP with a retro desktop UI inspired by classic Windows operating systems.
-
----
-
-## ✨ Features
-
-### 🧠 AI Job Parsing
-- Paste a job description or provide a URL
-- Chrome extension support for one-click job capture
-- Automatically extracts:
-  - Company
-  - Job title
-  - Location
-  - Salary range
-  - Job type / work mode
-  - Key requirements & responsibilities
-- Duplicate detection prevents saving the same job twice
+This project is intentionally **retro**: desktop icons, Start menu, taskbar clock, windowed apps, and fake loading dialogs — not a modern SaaS dashboard.
 
 ---
 
-### 🗂️ Application Management
-- Table view of all applications
-- Editable fields (notes, links, salary, stage)
-- CSV export (Excel-compatible)
+## Features
 
----
+### 🖥️ Win95 Desktop UI
+- Desktop icons + Start menu
+- Taskbar with live clock
+- Windowed apps (Home, Pipeline, Applications, etc.)
+- Fake loading overlays when opening apps
+- Username shown in taskbar and window title
 
-### 📌 Pipeline Board
-- Visual Kanban pipeline:
+### 🤖 AI Job Extraction & Parsing
+- Paste job text, provide a URL, or use the Chrome extension
+- AI extracts structured fields:
+  - Company, title, location
+  - Salary range, currency, period
+  - Job type, work mode, seniority
+  - Responsibilities & requirements
+- Duplicate detection (per user)
+
+### 📂 Applications
+- Table view with search/filter
+- Edit notes, URLs, metadata
+- **CSV export** (Excel-compatible)
+
+### 🧩 Pipeline Board
+- Kanban stages:
   - Applied → Interview → Offer → Hired → Rejected
-- Drag & drop cards between stages
-- Order and stage persist to database
-- Per-column scrolling for large pipelines
-- Search applications by company or title
-
----
-
-### 🖥️ Windows-95 Desktop UI
-- Desktop icons (Home, Pipeline, Applications, Extract, Analytics, About)
-- Start menu with fake app-launch loading dialogs
-- Taskbar with clock and version display
-- Pixel-art icons and classic Win95 window chrome
-- “Welcome” Home app with step-by-step usage instructions
-
----
+- Drag & drop across columns
+- Order persists to database
 
 ### 📊 Analytics
-- Application counts per stage
-- Percentage breakdown
-- Summary stats (active vs rejected)
+- Per-user statistics
+- Counts by stage
+- Active vs rejected
+- Designed for future chart expansion
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-- **Frontend**: Next.js (App Router), React, TypeScript
-- **Backend**: Next.js API Routes
-- **Database**: SQLite
-- **ORM**: Prisma v7 (`@prisma/adapter-better-sqlite3`)
-- **AI**: OpenAI (`gpt-4o-mini`)
-- **Drag & Drop**: @dnd-kit
-- **Styling**: Custom CSS (Windows 95 aesthetic)
-- **Browser Extension**: Chrome extension for job extraction
+**Frontend**
+- Next.js (App Router)
+- React + TypeScript
+- Custom CSS (Win95 aesthetic)
+- @dnd-kit (drag & drop)
+
+**Backend**
+- Next.js Route Handlers (`/app/api`)
+- Prisma v7
+
+**Database**
+- SQLite (local development)
+- Planned: PostgreSQL (Neon) for production
+
+**Auth**
+- NextAuth (Credentials provider)
+- Username + password (bcrypt)
+- JWT sessions
+- No email, no password recovery (intentional)
+
+**AI**
+- OpenAI (`gpt-4o-mini`)
+- Structured JSON schema outputs
 
 ---
 
-## 🚀 Getting Started
+## Security & Multi-User Support
 
-### 1. Install dependencies
+- Signup + login implemented
+- All pages protected
+- All API routes require authentication
+- All application data scoped by `userId`
+- Ownership checks on update / delete / reorder
+- AI endpoints require login (prevents quota abuse)
+- CSV export scoped per user
+
+⚠️ **No password recovery** — users must save credentials.
+
+---
+
+## Local Development
+
+### 1) Install dependencies
 ```bash
 npm install
