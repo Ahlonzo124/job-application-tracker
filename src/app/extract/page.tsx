@@ -47,6 +47,11 @@ export default function ExtractPage() {
   const [pastedText, setPastedText] = useState("");
 
   const [loading, setLoading] = useState(false);
+
+  // ✅ New: status + progress (loading bar)
+  const [statusText, setStatusText] = useState<string>("Status: Ready");
+  const [progress, setProgress] = useState<number>(0); // 0..100
+
   const [extractRes, setExtractRes] = useState<ExtractResponse | null>(null);
   const [aiResRaw, setAiResRaw] = useState<any>(null);
 
@@ -83,20 +88,22 @@ export default function ExtractPage() {
 
     (async () => {
       try {
-        const r = await fetch(
-          `/api/extension/inbox?token=${encodeURIComponent(token)}`
-        );
+        setStatusText("Status: Checking extension inbox…");
+        const r = await fetch(`/api/extension/inbox?token=${encodeURIComponent(token)}`);
         const j = await r.json();
 
         if (!r.ok || !j.ok) {
           setInboxMsg(j?.error || "Could not fetch extension text.");
+          setStatusText("Status: Ready");
           return;
         }
 
         setInboxItem(j.item);
         setInboxMsg("Extension description received. Use it?");
+        setStatusText("Status: Extension text loaded ✅");
       } catch {
         setInboxMsg("Could not fetch extension text.");
+        setStatusText("Status: Ready");
       }
     })();
   }, []);
@@ -129,6 +136,9 @@ export default function ExtractPage() {
 
   async function handleExtractAndAnalyze() {
     setLoading(true);
+    setProgress(10);
+    setStatusText("Status: Sending request…");
+
     setSaveMsg(null);
     setExtractRes(null);
     setAiResRaw(null);
@@ -136,8 +146,19 @@ export default function ExtractPage() {
     try {
       const payload: any = {};
       if (url.trim()) payload.url = url.trim();
-      if (pastedText.trim().length >= 30)
-        payload.pastedText = pastedText.trim();
+      if (pastedText.trim().length >= 30) payload.pastedText = pastedText.trim();
+
+      // Friendly client-side hint
+      if (!payload.url && !payload.pastedText) {
+        setSaveMsg("Please paste at least ~30 characters or provide a URL.");
+        setStatusText("Status: Ready");
+        setProgress(0);
+        setLoading(false);
+        return;
+      }
+
+      setProgress(25);
+      setStatusText("Status: Extracting…");
 
       const r = await fetch("/api/extract-and-parse", {
         method: "POST",
@@ -147,33 +168,42 @@ export default function ExtractPage() {
 
       const text = await r.text();
       let j: any = null;
+
       try {
         j = JSON.parse(text);
       } catch {
         setSaveMsg(
-          `Extract+Analyze failed (non-JSON). Status ${r.status}. Preview: ${text.slice(
-            0,
-            200
-          )}`
+          `Extract+Analyze failed (non-JSON). Status ${r.status}. Preview: ${text.slice(0, 200)}`
         );
+        setStatusText(`Status: Failed (non-JSON). HTTP ${r.status}`);
+        setProgress(0);
         setLoading(false);
         return;
       }
 
+      // If backend returns an error, show it clearly
       if (!r.ok || j?.ok === false) {
+        const step = j?.step ? String(j.step) : "unknown";
+        const err = j?.error ? String(j.error) : `Failed. HTTP ${r.status}`;
+
         setAiResRaw(j);
-        setExtractRes(j?.extract ?? { error: j?.error ?? "Failed" });
+        setExtractRes(j?.extract ?? { error: err });
+
+        setSaveMsg(`Step: ${step} — ${err}`);
+        setStatusText(`Status: Failed (${step}). HTTP ${r.status}`);
+        setProgress(0);
         setLoading(false);
         return;
       }
+
+      setProgress(70);
+      setStatusText("Status: AI parsing…");
 
       setExtractRes(j.extract);
       setAiResRaw(j.ai);
 
       const bestUrl =
-        j?.bestUrl && typeof j.bestUrl === "string"
-          ? j.bestUrl
-          : url.trim() || j.extract?.url || "";
+        j?.bestUrl && typeof j.bestUrl === "string" ? j.bestUrl : url.trim() || j.extract?.url || "";
 
       if (j.ai?.data) fillFormFromAI(j.ai.data, bestUrl);
 
@@ -182,20 +212,31 @@ export default function ExtractPage() {
         ...prev,
         url: prev.url || bestUrl || "",
       }));
+
+      setProgress(100);
+      setStatusText("Status: Done ✅ (Review and Save)");
     } catch (e: any) {
-      setExtractRes({ error: e?.message ?? "Unknown error" });
+      const msg = e?.message ?? "Unknown error";
+      setExtractRes({ error: msg });
+      setSaveMsg(msg);
+      setStatusText("Status: Failed (client error)");
+      setProgress(0);
     } finally {
       setLoading(false);
+      // leave progress at 100 if success; reset if not parsed
+      // (we already set to 0 on failures above)
     }
   }
 
   async function handleSave() {
     setSaveLoading(true);
     setSaveMsg(null);
+    setStatusText("Status: Saving…");
 
     try {
       if (!form.company.trim() || !form.title.trim()) {
         setSaveMsg("Please fill Company and Title before saving.");
+        setStatusText("Status: Save blocked (missing Company/Title)");
         setSaveLoading(false);
         return;
       }
@@ -219,7 +260,6 @@ export default function ExtractPage() {
         keyRequirements: form.keyRequirements ?? [],
         keyResponsibilities: form.keyResponsibilities ?? [],
 
-        // enum-safe stage value
         stage: form.stage,
         notes: form.notes.trim() || null,
       };
@@ -232,28 +272,29 @@ export default function ExtractPage() {
 
       const text = await r.text();
       let j: any = null;
+
       try {
         j = JSON.parse(text);
       } catch {
-        setSaveMsg(
-          `Save failed (non-JSON). Status ${r.status}. Preview: ${text.slice(
-            0,
-            200
-          )}`
-        );
+        setSaveMsg(`Save failed (non-JSON). Status ${r.status}. Preview: ${text.slice(0, 200)}`);
+        setStatusText(`Status: Save failed (non-JSON). HTTP ${r.status}`);
         setSaveLoading(false);
         return;
       }
 
       if (!r.ok || !j.ok) {
         setSaveMsg(j?.error || `Save failed. Status ${r.status}`);
+        setStatusText(`Status: Save failed. HTTP ${r.status}`);
         setSaveLoading(false);
         return;
       }
 
+      setStatusText("Status: Saved ✅ Redirecting…");
       window.location.href = "/applications";
     } catch (e: any) {
-      setSaveMsg(e?.message ?? "Save failed.");
+      const msg = e?.message ?? "Save failed.";
+      setSaveMsg(msg);
+      setStatusText("Status: Save failed (client error)");
     } finally {
       setSaveLoading(false);
     }
@@ -264,9 +305,45 @@ export default function ExtractPage() {
       <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 8 }}>
         Add Job Application (MVP)
       </h1>
-      <p style={{ marginBottom: 16, opacity: 0.85 }}>
+      <p style={{ marginBottom: 10, opacity: 0.85 }}>
         One button extracts + parses. Then you can edit and save.
       </p>
+
+      {/* ✅ Status + Loading Bar (no extra files) */}
+      <div
+        style={{
+          marginBottom: 14,
+          padding: 12,
+          border: "1px solid #ddd",
+          borderRadius: 12,
+          background: "#fafafa",
+        }}
+      >
+        <div style={{ fontWeight: 900, marginBottom: 8 }}>{statusText}</div>
+
+        <div
+          style={{
+            height: 10,
+            borderRadius: 999,
+            border: "1px solid #ccc",
+            overflow: "hidden",
+            background: "#fff",
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${loading ? Math.max(8, Math.min(100, progress)) : progress}%`,
+              background: "#111",
+              transition: "width 200ms ease",
+            }}
+          />
+        </div>
+
+        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+          {loading ? "Working…" : progress === 100 ? "Ready to save." : "Idle."}
+        </div>
+      </div>
 
       {/* Extension banner */}
       {inboxMsg && (
@@ -302,21 +379,13 @@ export default function ExtractPage() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  marginTop: 12,
-                  display: "flex",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
+              <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button
                   onClick={() => {
                     setPastedText(inboxItem.extractedText || "");
                     if (inboxItem.url) setUrl(inboxItem.url);
-                    setInboxMsg(
-                      "Loaded from extension. Now click Extract + Analyze."
-                    );
+                    setInboxMsg("Loaded from extension. Now click Extract + Analyze.");
+                    setStatusText("Status: Loaded from extension ✅");
                     window.history.replaceState({}, "", "/extract");
                   }}
                   style={{
@@ -334,6 +403,7 @@ export default function ExtractPage() {
                   onClick={() => {
                     setInboxMsg(null);
                     setInboxItem(null);
+                    setStatusText("Status: Ready");
                     window.history.replaceState({}, "", "/extract");
                   }}
                   style={{
@@ -355,9 +425,7 @@ export default function ExtractPage() {
       {/* Inputs */}
       <div style={{ display: "grid", gap: 12 }}>
         <label>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>
-            Job Posting URL
-          </div>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Job Posting URL</div>
           <input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
@@ -374,9 +442,7 @@ export default function ExtractPage() {
         <div style={{ textAlign: "center", opacity: 0.6 }}>— OR —</div>
 
         <label>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>
-            Paste Job Description (fallback)
-          </div>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Paste Job Description (fallback)</div>
           <textarea
             value={pastedText}
             onChange={(e) => setPastedText(e.target.value)}
@@ -422,77 +488,26 @@ export default function ExtractPage() {
 
       {/* Editable form */}
       {parsed && (
-        <div
-          style={{
-            marginTop: 18,
-            padding: 14,
-            border: "1px solid #ddd",
-            borderRadius: 12,
-          }}
-        >
+        <div style={{ marginTop: 18, padding: 14, border: "1px solid #ddd", borderRadius: 12 }}>
           <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 10 }}>
             Application (editable)
           </h2>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 12,
-            }}
-          >
-            <Field
-              label="Company"
-              value={form.company}
-              onChange={(v) => setForm((p) => ({ ...p, company: v }))}
-            />
-            <Field
-              label="Title"
-              value={form.title}
-              onChange={(v) => setForm((p) => ({ ...p, title: v }))}
-            />
-
-            <Field
-              label="Location"
-              value={form.location}
-              onChange={(v) => setForm((p) => ({ ...p, location: v }))}
-            />
-            <Field
-              label="URL"
-              value={form.url}
-              onChange={(v) => setForm((p) => ({ ...p, url: v }))}
-            />
-
-            <Field
-              label="Job Type"
-              value={form.jobType}
-              onChange={(v) => setForm((p) => ({ ...p, jobType: v }))}
-            />
-            <Field
-              label="Work Mode"
-              value={form.workMode}
-              onChange={(v) => setForm((p) => ({ ...p, workMode: v }))}
-            />
-
-            <Field
-              label="Seniority"
-              value={form.seniority}
-              onChange={(v) => setForm((p) => ({ ...p, seniority: v }))}
-            />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Company" value={form.company} onChange={(v) => setForm((p) => ({ ...p, company: v }))} />
+            <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} />
+            <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} />
+            <Field label="URL" value={form.url} onChange={(v) => setForm((p) => ({ ...p, url: v }))} />
+            <Field label="Job Type" value={form.jobType} onChange={(v) => setForm((p) => ({ ...p, jobType: v }))} />
+            <Field label="Work Mode" value={form.workMode} onChange={(v) => setForm((p) => ({ ...p, workMode: v }))} />
+            <Field label="Seniority" value={form.seniority} onChange={(v) => setForm((p) => ({ ...p, seniority: v }))} />
 
             <div>
               <div style={{ fontWeight: 900, marginBottom: 6 }}>Stage</div>
               <select
                 value={form.stage}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, stage: e.target.value as Stage }))
-                }
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  border: "1px solid #ccc",
-                  borderRadius: 8,
-                }}
+                onChange={(e) => setForm((p) => ({ ...p, stage: e.target.value as Stage }))}
+                style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
               >
                 {STAGES.map((s) => (
                   <option key={s.value} value={s.value}>
@@ -502,43 +517,19 @@ export default function ExtractPage() {
               </select>
             </div>
 
-            <Field
-              label="Salary Min"
-              value={form.salaryMin}
-              onChange={(v) => setForm((p) => ({ ...p, salaryMin: v }))}
-            />
-            <Field
-              label="Salary Max"
-              value={form.salaryMax}
-              onChange={(v) => setForm((p) => ({ ...p, salaryMax: v }))}
-            />
-
-            <Field
-              label="Salary Currency"
-              value={form.salaryCurrency}
-              onChange={(v) => setForm((p) => ({ ...p, salaryCurrency: v }))}
-            />
-            <Field
-              label="Salary Period"
-              value={form.salaryPeriod}
-              onChange={(v) => setForm((p) => ({ ...p, salaryPeriod: v }))}
-            />
+            <Field label="Salary Min" value={form.salaryMin} onChange={(v) => setForm((p) => ({ ...p, salaryMin: v }))} />
+            <Field label="Salary Max" value={form.salaryMax} onChange={(v) => setForm((p) => ({ ...p, salaryMax: v }))} />
+            <Field label="Salary Currency" value={form.salaryCurrency} onChange={(v) => setForm((p) => ({ ...p, salaryCurrency: v }))} />
+            <Field label="Salary Period" value={form.salaryPeriod} onChange={(v) => setForm((p) => ({ ...p, salaryPeriod: v }))} />
           </div>
 
           <div style={{ marginTop: 12 }}>
             <div style={{ fontWeight: 900, marginBottom: 6 }}>Summary</div>
             <textarea
               value={form.descriptionSummary}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, descriptionSummary: e.target.value }))
-              }
+              onChange={(e) => setForm((p) => ({ ...p, descriptionSummary: e.target.value }))}
               rows={4}
-              style={{
-                width: "100%",
-                padding: 10,
-                border: "1px solid #ccc",
-                borderRadius: 8,
-              }}
+              style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
             />
           </div>
 
@@ -551,9 +542,7 @@ export default function ExtractPage() {
           <TwoListEditor
             title="Key Responsibilities"
             items={form.keyResponsibilities}
-            onChange={(items) =>
-              setForm((p) => ({ ...p, keyResponsibilities: items }))
-            }
+            onChange={(items) => setForm((p) => ({ ...p, keyResponsibilities: items }))}
           />
 
           <div style={{ marginTop: 12 }}>
@@ -562,24 +551,11 @@ export default function ExtractPage() {
               value={form.notes}
               onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
               rows={3}
-              style={{
-                width: "100%",
-                padding: 10,
-                border: "1px solid #ccc",
-                borderRadius: 8,
-              }}
+              style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
             />
           </div>
 
-          <div
-            style={{
-              marginTop: 12,
-              display: "flex",
-              gap: 12,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ marginTop: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <button
               onClick={handleSave}
               disabled={saveLoading}
@@ -628,11 +604,7 @@ function Field(props: {
   );
 }
 
-function TwoListEditor(props: {
-  title: string;
-  items: string[];
-  onChange: (items: string[]) => void;
-}) {
+function TwoListEditor(props: { title: string; items: string[]; onChange: (items: string[]) => void }) {
   const [draft, setDraft] = useState("");
 
   return (

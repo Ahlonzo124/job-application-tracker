@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 /* ------------------------ CORS HELPERS ------------------------ */
 function withCors(resp: Response) {
   const headers = new Headers(resp.headers);
-  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Origin", "*"); // tighten later if you want
   headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Content-Type");
   return new Response(resp.body, { status: resp.status, headers });
@@ -70,11 +70,8 @@ function normalizeUrl(raw: string | null): string | null {
 
   try {
     const u = new URL(s);
-
-    // drop hash
     u.hash = "";
 
-    // remove tracking params
     const badKeys = new Set([
       "utm_source",
       "utm_medium",
@@ -90,20 +87,18 @@ function normalizeUrl(raw: string | null): string | null {
       "source",
     ]);
 
-    // remove utm_* and common trackers
     for (const key of Array.from(u.searchParams.keys())) {
-      if (key.toLowerCase().startsWith("utm_")) u.searchParams.delete(key);
-      if (badKeys.has(key.toLowerCase())) u.searchParams.delete(key);
+      const k = key.toLowerCase();
+      if (k.startsWith("utm_")) u.searchParams.delete(key);
+      if (badKeys.has(k)) u.searchParams.delete(key);
     }
 
-    // normalize pathname trailing slash
     if (u.pathname.length > 1 && u.pathname.endsWith("/")) {
       u.pathname = u.pathname.slice(0, -1);
     }
 
     return u.toString();
   } catch {
-    // if URL() fails, just return trimmed string
     return s;
   }
 }
@@ -120,80 +115,91 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
 
     const base = new URL(req.url);
-
-    // Your existing endpoints
     const extractUrl = new URL("/api/extract-job", base);
     const aiUrl = new URL("/api/ai/parse-job", base);
 
-    // Prefer user-provided URL
-    const inputUrl =
-      body?.url && typeof body.url === "string" ? body.url.trim() : "";
+    const inputUrl = asString(body?.url) ?? "";
+    const pastedText = asString(body?.pastedText) ?? "";
+    const pageTitle = asString(body?.pageTitle);
 
-    /* ---------- 1) EXTRACT ---------- */
-    const extractRes = await fetch(extractUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    const extractJson = await safeReadJson(extractRes);
-
-    if (
-      !extractRes.ok ||
-      (extractJson as any)?.error ||
-      (extractJson as any)?.__nonJson ||
-      (extractJson as any)?.__empty
-    ) {
+    // Must have one input
+    if (!inputUrl && !pastedText) {
       return withCors(
         NextResponse.json(
-          {
-            ok: false,
-            step: "extract",
-            status: extractRes.status,
-            error:
-              (extractJson as any)?.error ||
-              ((extractJson as any)?.__empty
-                ? "Extract route returned empty response."
-                : null) ||
-              ((extractJson as any)?.__nonJson
-                ? "Extract route returned non-JSON response."
-                : null) ||
-              "Extract failed.",
-            extract: extractJson,
-          },
+          { ok: false, step: "input", error: "Provide a URL or pastedText." },
           { status: 400 }
         )
       );
     }
 
-    const extractedText = (extractJson as any)?.extractedText;
-    if (
-      !extractedText ||
-      typeof extractedText !== "string" ||
-      extractedText.trim().length < 30
-    ) {
-      return withCors(
-        NextResponse.json(
-          {
-            ok: false,
-            step: "extract",
-            error: "No extractedText returned (or too short).",
-            extract: extractJson,
-          },
-          { status: 400 }
-        )
-      );
+    /* ---------- 1) EXTRACT (ONLY IF URL + NO pastedText) ---------- */
+    let extractedText = pastedText;
+    let extractJson: any = null;
+
+    if (!extractedText && inputUrl) {
+      // Try POST
+      let extractRes = await fetch(extractUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: inputUrl }),
+      });
+
+      // If extractor only supports GET, try GET
+      if (extractRes.status === 405) {
+        const extractGet = new URL(extractUrl);
+        extractGet.searchParams.set("url", inputUrl);
+        extractRes = await fetch(extractGet.toString(), { method: "GET" });
+      }
+
+      extractJson = await safeReadJson(extractRes);
+
+      if (
+        !extractRes.ok ||
+        extractJson?.error ||
+        extractJson?.__nonJson ||
+        extractJson?.__empty
+      ) {
+        return withCors(
+          NextResponse.json(
+            {
+              ok: false,
+              step: "extract",
+              status: extractRes.status,
+              error:
+                extractJson?.error ||
+                (extractJson?.__empty ? "Extract route returned empty response." : null) ||
+                (extractJson?.__nonJson ? "Extract route returned non-JSON response." : null) ||
+                "Extract failed.",
+              extract: extractJson,
+            },
+            { status: 400 }
+          )
+        );
+      }
+
+      const t = extractJson?.extractedText;
+      if (!t || typeof t !== "string" || t.trim().length < 30) {
+        return withCors(
+          NextResponse.json(
+            {
+              ok: false,
+              step: "extract",
+              error: "No extractedText returned (or too short).",
+              extract: extractJson,
+            },
+            { status: 400 }
+          )
+        );
+      }
+
+      extractedText = t.trim();
     }
 
-    // Your extractor doesn’t currently return url, so this is typically ""
-    const extractedUrl =
-      (extractJson as any)?.url && typeof (extractJson as any)?.url === "string"
-        ? (extractJson as any).url
-        : "";
-
+    // bestUrl for AI + saving
+    const extractedUrl = asString(extractJson?.url);
     const bestUrl = inputUrl || extractedUrl || "";
 
     /* ---------- 2) AI PARSE ---------- */
@@ -202,8 +208,8 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         extractedText,
-        url: bestUrl || undefined,
-        pageTitle: (extractJson as any)?.titleGuess ?? undefined,
+        url: bestUrl || null,
+        pageTitle: pageTitle ?? extractJson?.titleGuess ?? undefined,
       }),
     });
 
@@ -211,10 +217,10 @@ export async function POST(req: Request) {
 
     if (
       !aiRes.ok ||
-      (aiJson as any)?.ok === false ||
-      (aiJson as any)?.error ||
-      (aiJson as any)?.__nonJson ||
-      (aiJson as any)?.__empty
+      aiJson?.ok === false ||
+      aiJson?.error ||
+      aiJson?.__nonJson ||
+      aiJson?.__empty
     ) {
       return withCors(
         NextResponse.json(
@@ -223,11 +229,9 @@ export async function POST(req: Request) {
             step: "ai",
             status: aiRes.status,
             error:
-              (aiJson as any)?.error ||
-              ((aiJson as any)?.__empty ? "AI route returned empty response." : null) ||
-              ((aiJson as any)?.__nonJson
-                ? "AI route returned non-JSON response."
-                : null) ||
+              aiJson?.error ||
+              (aiJson?.__empty ? "AI route returned empty response." : null) ||
+              (aiJson?.__nonJson ? "AI route returned non-JSON response." : null) ||
               "AI parse failed.",
             extract: extractJson,
             ai: aiJson,
@@ -237,7 +241,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const aiData = (aiJson as any)?.data;
+    const aiData = aiJson?.data;
 
     // Required by DB (non-null). AI can return null, so we guard.
     const company = asString(aiData?.company) ?? "Unknown Company";
@@ -291,7 +295,7 @@ export async function POST(req: Request) {
     /* ---------- 4) SAVE ---------- */
     const created = await prisma.application.create({
       data: {
-        userId, // ✅ attach ownership
+        userId,
 
         company,
         title,
