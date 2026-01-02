@@ -23,7 +23,7 @@ function cleanText(s: string) {
 
 async function fetchHtml(url: string) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+  const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
     const res = await fetch(url, {
@@ -56,7 +56,6 @@ function extractWithReadability(html: string, url: string) {
 
 function extractWithCheerio(html: string) {
   const $ = cheerio.load(html);
-
   $("script, style, noscript, iframe, svg").remove();
 
   const candidates = [
@@ -87,20 +86,13 @@ function jsonError(message: string, status = 400, extra?: any) {
   );
 }
 
-/**
- * POST /api/extract-job
- * Body: { url }
- */
 export async function POST(req: Request) {
-  // Auth required
+  // ✅ Must exist in production, otherwise POST returns 405
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return jsonError("Unauthorized", 401);
-  }
+  if (!session?.user) return jsonError("Unauthorized", 401);
 
   let url: string;
 
-  // Always return JSON even if parsing fails
   try {
     const body = BodySchema.parse(await req.json());
     url = body.url.trim();
@@ -111,7 +103,6 @@ export async function POST(req: Request) {
   try {
     const { res, html, contentType } = await fetchHtml(url);
 
-    // If we got blocked or redirected to something non-HTML, return a clear JSON error.
     if (!res.ok) {
       return jsonError(`Failed to fetch page (HTTP ${res.status}).`, 400, {
         url,
@@ -123,23 +114,18 @@ export async function POST(req: Request) {
       return jsonError("Fetched page returned empty HTML.", 400, { url, contentType });
     }
 
-    // Some sites return JSON or a bot-block page; still try, but be explicit.
-    // (We don't hard-fail on contentType because many sites lie about it.)
     let extractedText = "";
-
-    // 1) Readability
     try {
       extractedText = extractWithReadability(html, url);
     } catch {
       extractedText = "";
     }
 
-    // 2) Cheerio fallback
     if (!extractedText || extractedText.length < 200) {
       try {
         extractedText = extractWithCheerio(html);
       } catch {
-        extractedText = extractedText || "";
+        // ignore
       }
     }
 
@@ -147,13 +133,12 @@ export async function POST(req: Request) {
 
     if (!extractedText || extractedText.length < 200) {
       return jsonError(
-        "Could not extract enough readable text from this page. Try the Paste Job Description fallback.",
+        "Could not extract enough readable text from this page. Try Paste Job Description fallback.",
         400,
         { url }
       );
     }
 
-    // Title guess
     let titleGuess: string | undefined;
     try {
       const dom = new JSDOM(html);
@@ -169,7 +154,6 @@ export async function POST(req: Request) {
       extractedText,
     });
   } catch (err: any) {
-    // AbortController timeout or any runtime error => still JSON
     const msg =
       err?.name === "AbortError"
         ? "Timed out fetching the job page. Try again or use Paste Job Description."
@@ -179,34 +163,21 @@ export async function POST(req: Request) {
   }
 }
 
-/**
- * GET /api/extract-job?url=...
- * Convenience for manual testing.
- */
+// Optional: allow GET for quick testing in browser
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return jsonError("Unauthorized", 401);
-  }
+  if (!session?.user) return jsonError("Unauthorized", 401);
 
   const { searchParams } = new URL(req.url);
   const url = searchParams.get("url");
+  if (!url) return jsonError("Missing url", 400);
 
-  if (!url) {
-    return jsonError("Missing url", 400);
-  }
+  // Run through same logic as POST
+  const fakeReq = new Request(req.url, {
+    method: "POST",
+    headers: req.headers,
+    body: JSON.stringify({ url }),
+  });
 
-  // Reuse POST behavior safely by calling the same logic:
-  // easiest is to just run the same code path here.
-  try {
-    const parsed = BodySchema.parse({ url });
-    const fakeReq = new Request(req.url, {
-      method: "POST",
-      headers: req.headers,
-      body: JSON.stringify({ url: parsed.url }),
-    });
-    return POST(fakeReq);
-  } catch (err: any) {
-    return jsonError(err?.message ?? "Invalid url.", 400);
-  }
+  return POST(fakeReq);
 }
