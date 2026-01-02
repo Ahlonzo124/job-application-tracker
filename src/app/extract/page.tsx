@@ -12,7 +12,7 @@ type ApiOk = {
 
 type ApiFail = {
   ok: false;
-  step?: "extract" | "ai" | "server";
+  step?: "validate" | "extract" | "ai" | "server";
   status?: number;
   error?: string;
   extract?: any;
@@ -23,8 +23,7 @@ export default function ExtractPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  // If extension passes token, you may already have UI that handles it.
-  const token = searchParams.get("token");
+  const token = searchParams.get("token"); // optional (extension path)
 
   const [jobUrl, setJobUrl] = useState("");
   const [pastedText, setPastedText] = useState("");
@@ -32,17 +31,19 @@ export default function ExtractPage() {
   const [statusLine, setStatusLine] = useState("Idle.");
   const [messageLine, setMessageLine] = useState("");
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
 
-  // Show token hint (optional)
+  // Store last successful parse so we can save after
+  const [lastParse, setLastParse] = useState<ApiOk | null>(null);
+
   const tokenHint = useMemo(() => {
     if (!token) return "";
     return `Extension token detected: ${token.slice(0, 10)}...`;
   }, [token]);
 
-  // Fake-progress animation (Win95 style bar)
   useEffect(() => {
-    if (!busy) return;
+    if (!busy && !saving) return;
 
     setProgressPct(10);
     const t1 = setTimeout(() => setProgressPct(35), 250);
@@ -54,7 +55,7 @@ export default function ExtractPage() {
       clearTimeout(t2);
       clearTimeout(t3);
     };
-  }, [busy]);
+  }, [busy, saving]);
 
   function prettyErr(e: any) {
     if (!e) return "Unknown error";
@@ -72,6 +73,7 @@ export default function ExtractPage() {
     setStatusLine("Working...");
     setBusy(true);
     setProgressPct(8);
+    setLastParse(null);
 
     try {
       const url = jobUrl.trim();
@@ -85,15 +87,14 @@ export default function ExtractPage() {
         return;
       }
 
-      // If user pasted text, we *should not* require URL extraction.
-      // We'll send both; extract-job route will decide.
       const payload = {
-        url: url || null,
-        pastedText: text || null,
+        url: url || "",
+        pastedText: text || "",
         pageTitle: null,
+        token: token || null,
       };
 
-      setStatusLine("Extracting...");
+      setStatusLine("Extracting + parsing...");
       setProgressPct(30);
 
       const res = await fetch("/api/extract-and-parse", {
@@ -120,19 +121,10 @@ export default function ExtractPage() {
         return;
       }
 
-      // success
-      setStatusLine("Success ✅");
+      setLastParse(json as ApiOk);
+      setStatusLine("Parsed ✅ (not saved yet)");
+      setMessageLine("Now click Save to add it to Applications.");
       setProgressPct(100);
-
-      // You probably already have logic to fill an edit form after parsing.
-      // For now, we just store parsed data in sessionStorage and go to /applications or /pipeline if you want.
-      // If you already have an “edit & save” flow, plug it in here.
-
-      // Example: redirect to Applications page (or stay on extract)
-      // router.push("/applications");
-
-      // Keep message simple
-      setMessageLine("Extract + Analyze completed. Scroll down (if your form appears) and save.");
 
       setBusy(false);
       setTimeout(() => setProgressPct(0), 800);
@@ -144,13 +136,73 @@ export default function ExtractPage() {
     }
   }
 
+  async function handleSave() {
+    if (!lastParse) return;
+
+    setSaving(true);
+    setStatusLine("Saving...");
+    setMessageLine("");
+    setProgressPct(20);
+
+    try {
+      const url = jobUrl.trim();
+      const text = pastedText.trim();
+
+      const res = await fetch("/api/extract-and-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: url || null,
+          pastedText: text || null,
+          pageTitle: null,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json || json.ok !== true) {
+        setStatusLine(`Save failed. HTTP ${res.status}`);
+        setMessageLine(json?.error || "Save failed.");
+        setSaving(false);
+        setProgressPct(0);
+        return;
+      }
+
+      setStatusLine(json.duplicate ? "Already saved ✅" : "Saved ✅");
+      setMessageLine(
+        json.duplicate
+          ? "This job already existed in your Applications."
+          : "Saved to Applications. Redirecting..."
+      );
+
+      setProgressPct(100);
+
+      // Go to applications so you can see it immediately
+      setTimeout(() => router.push("/applications"), 600);
+    } catch (e: any) {
+      setStatusLine("Save failed (client).");
+      setMessageLine(prettyErr(e));
+      setSaving(false);
+      setProgressPct(0);
+      return;
+    }
+  }
+
+  const preview = lastParse?.ai?.data || null;
+  const previewCompany = typeof preview?.company === "string" ? preview.company : "";
+  const previewTitle = typeof preview?.title === "string" ? preview.title : "";
+  const previewUrl =
+    typeof preview?.url === "string"
+      ? preview.url
+      : (typeof lastParse?.bestUrl === "string" ? lastParse?.bestUrl : "");
+
   return (
     <div style={{ padding: 18 }}>
       <h1 style={{ fontSize: 38, fontWeight: 700, marginBottom: 6 }}>
-        Add Job Application (MVP)
+        Add Job Application
       </h1>
       <p style={{ marginTop: 0, color: "#222", opacity: 0.9 }}>
-        One button extracts + parses. Then you can edit and save.
+        Extract + Analyze first, then Save to Applications.
       </p>
 
       {/* Status box */}
@@ -168,14 +220,11 @@ export default function ExtractPage() {
         </div>
 
         <div className="win95ProgressOuter" aria-label="progress">
-          <div
-            className="win95ProgressInner"
-            style={{ width: `${progressPct}%` }}
-          />
+          <div className="win95ProgressInner" style={{ width: `${progressPct}%` }} />
         </div>
 
         <div style={{ marginTop: 10, color: "#333" }}>
-          {busy ? "Working..." : "Idle."}
+          {busy || saving ? "Working..." : "Idle."}
         </div>
 
         {tokenHint ? (
@@ -235,24 +284,59 @@ export default function ExtractPage() {
         />
       </div>
 
-      {/* Button */}
+      {/* Buttons */}
       <button
         onClick={handleExtractAndAnalyze}
-        disabled={busy}
+        disabled={busy || saving}
         style={{
           width: "100%",
           padding: 16,
           borderRadius: 12,
           border: "2px solid #777",
           background: busy ? "#d0d0d0" : "#c0c0c0",
-          cursor: busy ? "not-allowed" : "pointer",
+          cursor: busy || saving ? "not-allowed" : "pointer",
           fontWeight: 800,
+          marginBottom: 10,
         }}
       >
         Extract + Analyze (AI)
       </button>
 
-      {/* Error/Message */}
+      <button
+        onClick={handleSave}
+        disabled={!lastParse || busy || saving}
+        style={{
+          width: "100%",
+          padding: 16,
+          borderRadius: 12,
+          border: "2px solid #777",
+          background: !lastParse || saving ? "#d0d0d0" : "#c0c0c0",
+          cursor: !lastParse || busy || saving ? "not-allowed" : "pointer",
+          fontWeight: 800,
+        }}
+      >
+        Save to Applications
+      </button>
+
+      {/* Preview */}
+      {lastParse ? (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            borderRadius: 10,
+            background: "#f2f2f2",
+            border: "1px solid #ccc",
+          }}
+        >
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>Parsed Preview</div>
+          <div><b>Company:</b> {previewCompany || "(unknown)"}</div>
+          <div><b>Title:</b> {previewTitle || "(unknown)"}</div>
+          <div style={{ wordBreak: "break-word" }}><b>URL:</b> {previewUrl || "(none)"}</div>
+        </div>
+      ) : null}
+
+      {/* Message */}
       {messageLine ? (
         <div
           style={{

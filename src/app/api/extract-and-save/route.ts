@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /* ------------------------ CORS HELPERS ------------------------ */
 function withCors(resp: Response) {
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
     const extractUrl = new URL("/api/extract-job", base);
     const aiUrl = new URL("/api/ai/parse-job", base);
 
-    // ✅ CRITICAL FIX: forward cookies
+    // ✅ Forward cookies (critical for Vercel)
     const cookie = req.headers.get("cookie") ?? "";
     const forwardHeaders: Record<string, string> = {
       "Content-Type": "application/json",
@@ -123,6 +124,7 @@ export async function POST(req: Request) {
 
       if (
         !extractRes.ok ||
+        extractJson?.ok === false ||
         extractJson?.error ||
         extractJson?.__nonJson ||
         extractJson?.__empty
@@ -133,9 +135,7 @@ export async function POST(req: Request) {
               ok: false,
               step: "extract",
               status: extractRes.status,
-              error:
-                extractJson?.error ||
-                "Extract failed. Try paste fallback.",
+              error: extractJson?.error || "Extract failed. Try paste fallback.",
               extract: extractJson,
             },
             { status: 400 }
@@ -159,16 +159,24 @@ export async function POST(req: Request) {
     }
 
     /* ---------- 2) AI PARSE ---------- */
-    const bestUrl = inputUrl || extractJson?.url || "";
+    const extractedUrl =
+      extractJson && typeof extractJson?.url === "string" ? extractJson.url : "";
+    const bestUrl = inputUrl || extractedUrl || "";
+
+    const aiBody: any = {
+      extractedText,
+    };
+
+    // ✅ IMPORTANT: do NOT send url: null (omit it)
+    if (bestUrl) aiBody.url = bestUrl;
+
+    const bestTitle = pageTitle ?? extractJson?.titleGuess;
+    if (bestTitle) aiBody.pageTitle = bestTitle;
 
     const aiRes = await fetch(aiUrl, {
       method: "POST",
       headers: forwardHeaders,
-      body: JSON.stringify({
-        extractedText,
-        url: bestUrl || null,
-        pageTitle: pageTitle ?? extractJson?.titleGuess ?? undefined,
-      }),
+      body: JSON.stringify(aiBody),
     });
 
     const aiJson = await safeReadJson(aiRes);
@@ -187,6 +195,7 @@ export async function POST(req: Request) {
             step: "ai",
             status: aiRes.status,
             error: aiJson?.error || "AI parse failed.",
+            ai: aiJson,
           },
           { status: 400 }
         )
@@ -199,7 +208,7 @@ export async function POST(req: Request) {
     const company = asString(aiData.company) ?? "Unknown Company";
     const title = asString(aiData.title) ?? "Unknown Title";
     const location = asString(aiData.location);
-    const finalUrl = normalizeUrl(asString(aiData.url) ?? bestUrl);
+    const finalUrl = normalizeUrl(asString(aiData.url) ?? (bestUrl || null));
 
     if (finalUrl) {
       const existing = await prisma.application.findFirst({

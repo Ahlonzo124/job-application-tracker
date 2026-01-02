@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     const pageTitle = isNonEmptyString(body?.pageTitle) ? body.pageTitle.trim() : undefined;
 
     // Decide mode
-    const hasPasted = pastedText.length >= 50; // your UI requires decent length
+    const hasPasted = pastedText.length >= 50;
     const hasUrl = inputUrl.length > 0;
 
     if (!hasPasted && !hasUrl) {
@@ -64,8 +64,8 @@ export async function POST(req: Request) {
       extractPayload = {
         ok: true,
         source: "pastedText",
-        url: hasUrl ? inputUrl : null,
-        titleGuess: pageTitle ?? null,
+        url: hasUrl ? inputUrl : undefined,
+        titleGuess: pageTitle ?? undefined,
       };
     } else {
       // ✅ URL mode: call extract-job
@@ -127,14 +127,21 @@ export async function POST(req: Request) {
     // =========================
     // 2) AI parse
     // =========================
+    const aiBody: any = {
+      extractedText,
+    };
+
+    // ✅ IMPORTANT: do NOT send url: null (omit it entirely)
+    if (bestUrl) aiBody.url = bestUrl;
+
+    // pageTitle optional
+    const bestTitle = pageTitle ?? extractPayload?.titleGuess;
+    if (bestTitle) aiBody.pageTitle = bestTitle;
+
     const aiRes = await fetch(aiUrl, {
       method: "POST",
       headers: forwardHeaders,
-      body: JSON.stringify({
-        extractedText,
-        url: bestUrl || null,
-        pageTitle: pageTitle ?? extractPayload?.titleGuess ?? undefined,
-      }),
+      body: JSON.stringify(aiBody),
     });
 
     const aiJson = await safeReadJson(aiRes);
