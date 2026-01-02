@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { Readability } from "@mozilla/readability";
-import { JSDOM } from "jsdom";
 import * as cheerio from "cheerio";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
@@ -21,6 +19,13 @@ function cleanText(s: string) {
     .trim();
 }
 
+function jsonError(message: string, status = 400, extra?: any) {
+  return NextResponse.json(
+    { ok: false, error: message, ...(extra ? { extra } : {}) },
+    { status }
+  );
+}
+
 async function fetchHtml(url: string) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
@@ -29,6 +34,7 @@ async function fetchHtml(url: string) {
     const res = await fetch(url, {
       method: "GET",
       headers: {
+        // Some sites block requests without a real UA
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
         Accept: "text/html,application/xhtml+xml",
@@ -40,59 +46,61 @@ async function fetchHtml(url: string) {
 
     const contentType = res.headers.get("content-type") || "";
     const html = await res.text();
-
     return { res, html, contentType };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-function extractWithReadability(html: string, url: string) {
-  const dom = new JSDOM(html, { url });
-  const reader = new Readability(dom.window.document);
-  const article = reader.parse();
-  return article?.textContent?.trim() || "";
-}
+function bestTextFromSelectors($: cheerio.CheerioAPI) {
+  // Remove junk
+  $("script, style, noscript, iframe, svg, canvas").remove();
 
-function extractWithCheerio(html: string) {
-  const $ = cheerio.load(html);
-  $("script, style, noscript, iframe, svg").remove();
-
-  const candidates = [
+  const selectors = [
+    // common semantic containers
     "main",
     "article",
     '[role="main"]',
+
+    // common job-posting containers
     ".job",
     ".job-description",
+    ".jobDescription",
+    ".job-desc",
     ".description",
+    ".posting",
+    ".content",
     "#job",
     "#job-description",
+    "#jobDescriptionText",
+    "#posting",
+    "#description",
+    "#content",
+
+    // ATS patterns
+    "[data-automation='jobDescription']",
+    "[data-testid='jobDescription']",
+    "[class*='description']",
+    "[id*='description']",
   ];
 
-  let text = "";
-  for (const sel of candidates) {
+  let best = "";
+  for (const sel of selectors) {
     const t = $(sel).text().trim();
-    if (t.length > text.length) text = t;
+    if (t.length > best.length) best = t;
   }
 
-  if (!text) text = $("body").text().trim();
-  return text;
-}
+  // fallback to body text
+  if (!best) best = $("body").text().trim();
 
-function jsonError(message: string, status = 400, extra?: any) {
-  return NextResponse.json(
-    { ok: false, error: message, ...(extra ? { extra } : {}) },
-    { status }
-  );
+  return best;
 }
 
 export async function POST(req: Request) {
-  // ✅ Must exist in production, otherwise POST returns 405
   const session = await getServerSession(authOptions);
   if (!session?.user) return jsonError("Unauthorized", 401);
 
   let url: string;
-
   try {
     const body = BodySchema.parse(await req.json());
     url = body.url.trim();
@@ -114,37 +122,26 @@ export async function POST(req: Request) {
       return jsonError("Fetched page returned empty HTML.", 400, { url, contentType });
     }
 
-    let extractedText = "";
-    try {
-      extractedText = extractWithReadability(html, url);
-    } catch {
-      extractedText = "";
-    }
+    const $ = cheerio.load(html);
 
-    if (!extractedText || extractedText.length < 200) {
-      try {
-        extractedText = extractWithCheerio(html);
-      } catch {
-        // ignore
-      }
-    }
+    // Title guess
+    const titleGuess =
+      $("title").first().text().trim() ||
+      $('meta[property="og:title"]').attr("content")?.trim() ||
+      $('meta[name="twitter:title"]').attr("content")?.trim() ||
+      undefined;
 
+    // Extract best text
+    let extractedText = bestTextFromSelectors($);
     extractedText = cleanText(extractedText);
 
+    // If very short, site is likely blocking or content is behind JS
     if (!extractedText || extractedText.length < 200) {
       return jsonError(
-        "Could not extract enough readable text from this page. Try Paste Job Description fallback.",
+        "Could not extract enough readable text from this page (possibly blocked or rendered by JavaScript). Try Paste Job Description fallback.",
         400,
         { url }
       );
-    }
-
-    let titleGuess: string | undefined;
-    try {
-      const dom = new JSDOM(html);
-      titleGuess = dom.window.document.title?.trim() || undefined;
-    } catch {
-      titleGuess = undefined;
     }
 
     return NextResponse.json({
@@ -163,21 +160,13 @@ export async function POST(req: Request) {
   }
 }
 
-// Optional: allow GET for quick testing in browser
-export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return jsonError("Unauthorized", 401);
-
-  const { searchParams } = new URL(req.url);
-  const url = searchParams.get("url");
-  if (!url) return jsonError("Missing url", 400);
-
-  // Run through same logic as POST
-  const fakeReq = new Request(req.url, {
-    method: "POST",
-    headers: req.headers,
-    body: JSON.stringify({ url }),
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
   });
-
-  return POST(fakeReq);
 }
