@@ -3,6 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
+type InboxItem = {
+  token: string;
+  receivedAt: string;
+  url: string | null;
+  pageTitle: string | null;
+  extractedText: string;
+};
+
 type ApiOk = {
   ok: true;
   extract: any;
@@ -23,7 +31,7 @@ export default function ExtractPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const token = searchParams.get("token"); // optional (extension path)
+  const token = searchParams.get("token"); // extension token
 
   const [jobUrl, setJobUrl] = useState("");
   const [pastedText, setPastedText] = useState("");
@@ -32,30 +40,15 @@ export default function ExtractPage() {
   const [messageLine, setMessageLine] = useState("");
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingToken, setLoadingToken] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
 
-  // Store last successful parse so we can save after
   const [lastParse, setLastParse] = useState<ApiOk | null>(null);
 
   const tokenHint = useMemo(() => {
     if (!token) return "";
     return `Extension token detected: ${token.slice(0, 10)}...`;
   }, [token]);
-
-  useEffect(() => {
-    if (!busy && !saving) return;
-
-    setProgressPct(10);
-    const t1 = setTimeout(() => setProgressPct(35), 250);
-    const t2 = setTimeout(() => setProgressPct(55), 650);
-    const t3 = setTimeout(() => setProgressPct(75), 1100);
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, [busy, saving]);
 
   function prettyErr(e: any) {
     if (!e) return "Unknown error";
@@ -67,6 +60,86 @@ export default function ExtractPage() {
       return String(e);
     }
   }
+
+  // Win95 progress animation while busy
+  useEffect(() => {
+    if (!busy && !saving && !loadingToken) return;
+
+    setProgressPct(10);
+    const t1 = setTimeout(() => setProgressPct(35), 250);
+    const t2 = setTimeout(() => setProgressPct(55), 650);
+    const t3 = setTimeout(() => setProgressPct(75), 1100);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [busy, saving, loadingToken]);
+
+  // ✅ NEW: when token exists, pull data from inbox
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+
+    async function loadFromInbox() {
+      setLoadingToken(true);
+      setStatusLine("Loading from extension...");
+      setMessageLine("");
+      setLastParse(null);
+
+      try {
+        const res = await fetch(`/api/extension/inbox?token=${encodeURIComponent(token)}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok || !json?.ok) {
+          setStatusLine("Token lookup failed.");
+          setMessageLine(json?.error || `Could not load token (HTTP ${res.status}).`);
+          setLoadingToken(false);
+          setProgressPct(0);
+          return;
+        }
+
+        const item: InboxItem = json.item;
+
+        if (!item?.extractedText || item.extractedText.trim().length < 50) {
+          setStatusLine("Token loaded, but text is too short.");
+          setMessageLine("Try expanding the job posting and resend from the extension.");
+          setLoadingToken(false);
+          setProgressPct(0);
+          return;
+        }
+
+        if (cancelled) return;
+
+        // Prefill fields
+        setPastedText(item.extractedText);
+        if (item.url) setJobUrl(item.url);
+
+        setStatusLine("Loaded ✅ Ready to analyze.");
+        setMessageLine("Click Extract + Analyze, then Save.");
+        setLoadingToken(false);
+        setProgressPct(100);
+        setTimeout(() => setProgressPct(0), 800);
+      } catch (e: any) {
+        setStatusLine("Token load failed (client).");
+        setMessageLine(prettyErr(e));
+        setLoadingToken(false);
+        setProgressPct(0);
+      }
+    }
+
+    loadFromInbox();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   async function handleExtractAndAnalyze() {
     setMessageLine("");
@@ -111,11 +184,7 @@ export default function ExtractPage() {
         const http = fail.status ?? res.status;
 
         setStatusLine(`Failed (${step}). HTTP ${http}`);
-        setMessageLine(
-          fail.error ||
-            "Request failed. Open DevTools → Network → extract-and-parse and check response."
-        );
-
+        setMessageLine(fail.error || "Request failed. Check the response in DevTools.");
         setBusy(false);
         setProgressPct(0);
         return;
@@ -169,22 +238,15 @@ export default function ExtractPage() {
       }
 
       setStatusLine(json.duplicate ? "Already saved ✅" : "Saved ✅");
-      setMessageLine(
-        json.duplicate
-          ? "This job already existed in your Applications."
-          : "Saved to Applications. Redirecting..."
-      );
-
+      setMessageLine(json.duplicate ? "This job already existed." : "Saved to Applications. Redirecting...");
       setProgressPct(100);
 
-      // Go to applications so you can see it immediately
       setTimeout(() => router.push("/applications"), 600);
     } catch (e: any) {
       setStatusLine("Save failed (client).");
       setMessageLine(prettyErr(e));
       setSaving(false);
       setProgressPct(0);
-      return;
     }
   }
 
@@ -194,80 +256,47 @@ export default function ExtractPage() {
   const previewUrl =
     typeof preview?.url === "string"
       ? preview.url
-      : (typeof lastParse?.bestUrl === "string" ? lastParse?.bestUrl : "");
+      : typeof lastParse?.bestUrl === "string"
+      ? lastParse?.bestUrl
+      : "";
 
   return (
     <div style={{ padding: 18 }}>
-      <h1 style={{ fontSize: 38, fontWeight: 700, marginBottom: 6 }}>
-        Add Job Application
-      </h1>
+      <h1 style={{ fontSize: 38, fontWeight: 700, marginBottom: 6 }}>Add Job Application</h1>
       <p style={{ marginTop: 0, color: "#222", opacity: 0.9 }}>
-        Extract + Analyze first, then Save to Applications.
+        Extension → loads text automatically. Manual → paste URL or description.
       </p>
 
-      {/* Status box */}
-      <div
-        style={{
-          background: "#fff",
-          padding: 16,
-          borderRadius: 10,
-          marginTop: 12,
-          marginBottom: 16,
-        }}
-      >
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>
-          Status: {statusLine}
-        </div>
+      <div style={{ background: "#fff", padding: 16, borderRadius: 10, marginTop: 12, marginBottom: 16 }}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>Status: {statusLine}</div>
 
         <div className="win95ProgressOuter" aria-label="progress">
           <div className="win95ProgressInner" style={{ width: `${progressPct}%` }} />
         </div>
 
         <div style={{ marginTop: 10, color: "#333" }}>
-          {busy || saving ? "Working..." : "Idle."}
+          {loadingToken ? "Loading token..." : busy || saving ? "Working..." : "Idle."}
         </div>
 
         {tokenHint ? (
-          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-            {tokenHint}
-          </div>
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>{tokenHint}</div>
         ) : null}
       </div>
 
-      {/* Inputs */}
       <div style={{ marginBottom: 18 }}>
-        <label style={{ display: "block", fontWeight: 700, marginBottom: 8 }}>
-          Job Posting URL
-        </label>
+        <label style={{ display: "block", fontWeight: 700, marginBottom: 8 }}>Job Posting URL</label>
         <input
           value={jobUrl}
           onChange={(e) => setJobUrl(e.target.value)}
           placeholder="https://careers.company.com/job/..."
-          style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            fontSize: 14,
-          }}
+          style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc", fontSize: 14 }}
         />
       </div>
 
-      <div
-        style={{
-          textAlign: "center",
-          margin: "10px 0 14px",
-          opacity: 0.7,
-          fontWeight: 700,
-        }}
-      >
-        — OR —
-      </div>
+      <div style={{ textAlign: "center", margin: "10px 0 14px", opacity: 0.7, fontWeight: 700 }}>— OR —</div>
 
       <div style={{ marginBottom: 18 }}>
-        <label style={{ display: "block", fontWeight: 700, marginBottom: 8 }}>
-          Paste Job Description (fallback)
-        </label>
+        <label style={{ display: "block", fontWeight: 700, marginBottom: 8 }}>Paste Job Description (fallback)</label>
         <textarea
           value={pastedText}
           onChange={(e) => setPastedText(e.target.value)}
@@ -284,17 +313,16 @@ export default function ExtractPage() {
         />
       </div>
 
-      {/* Buttons */}
       <button
         onClick={handleExtractAndAnalyze}
-        disabled={busy || saving}
+        disabled={busy || saving || loadingToken}
         style={{
           width: "100%",
           padding: 16,
           borderRadius: 12,
           border: "2px solid #777",
           background: busy ? "#d0d0d0" : "#c0c0c0",
-          cursor: busy || saving ? "not-allowed" : "pointer",
+          cursor: busy || saving || loadingToken ? "not-allowed" : "pointer",
           fontWeight: 800,
           marginBottom: 10,
         }}
@@ -304,31 +332,22 @@ export default function ExtractPage() {
 
       <button
         onClick={handleSave}
-        disabled={!lastParse || busy || saving}
+        disabled={!lastParse || busy || saving || loadingToken}
         style={{
           width: "100%",
           padding: 16,
           borderRadius: 12,
           border: "2px solid #777",
           background: !lastParse || saving ? "#d0d0d0" : "#c0c0c0",
-          cursor: !lastParse || busy || saving ? "not-allowed" : "pointer",
+          cursor: !lastParse || busy || saving || loadingToken ? "not-allowed" : "pointer",
           fontWeight: 800,
         }}
       >
         Save to Applications
       </button>
 
-      {/* Preview */}
       {lastParse ? (
-        <div
-          style={{
-            marginTop: 14,
-            padding: 12,
-            borderRadius: 10,
-            background: "#f2f2f2",
-            border: "1px solid #ccc",
-          }}
-        >
+        <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#f2f2f2", border: "1px solid #ccc" }}>
           <div style={{ fontWeight: 800, marginBottom: 6 }}>Parsed Preview</div>
           <div><b>Company:</b> {previewCompany || "(unknown)"}</div>
           <div><b>Title:</b> {previewTitle || "(unknown)"}</div>
@@ -336,7 +355,6 @@ export default function ExtractPage() {
         </div>
       ) : null}
 
-      {/* Message */}
       {messageLine ? (
         <div
           style={{
@@ -353,7 +371,6 @@ export default function ExtractPage() {
         </div>
       ) : null}
 
-      {/* Win95 progress styles */}
       <style jsx>{`
         .win95ProgressOuter {
           height: 14px;
