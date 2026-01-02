@@ -1,4 +1,4 @@
-import { requireAuth } from "../lib/requireAuth";
+import { requireAuth } from "@/lib/requireAuth";
 import DesktopNavLink from "../components/DesktopNavLink";
 
 export default async function Home() {

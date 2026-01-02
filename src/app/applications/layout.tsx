@@ -1,4 +1,4 @@
-import { requireAuth } from "../../lib/requireAuth";
+import { requireAuth } from "@/lib/requireAuth";
 
 export default async function ApplicationsLayout({
   children,

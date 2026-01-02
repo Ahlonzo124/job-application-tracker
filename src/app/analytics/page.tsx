@@ -3,7 +3,7 @@ export const revalidate = 0;
 
 import { prisma } from "@/lib/prisma";
 import { ApplicationStage } from "@prisma/client";
-import { requireAuth } from "../../lib/requireAuth";
+import { requireAuth } from "@/lib/requireAuth";
 
 function stageLabel(s: ApplicationStage) {
   switch (s) {
