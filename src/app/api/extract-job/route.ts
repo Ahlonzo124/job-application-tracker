@@ -7,6 +7,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const BodySchema = z.object({
   url: z.string().url(),
@@ -21,21 +22,29 @@ function cleanText(s: string) {
 }
 
 async function fetchHtml(url: string) {
-  const res = await fetch(url, {
-    method: "GET",
-    // Some job sites block default fetch user-agent; this helps.
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-      Accept: "text/html,application/xhtml+xml",
-    },
-    redirect: "follow",
-    // Helps avoid caching weirdness
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
-  const html = await res.text();
-  return { res, html };
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+      },
+      redirect: "follow",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    const contentType = res.headers.get("content-type") || "";
+    const html = await res.text();
+
+    return { res, html, contentType };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function extractWithReadability(html: string, url: string) {
@@ -48,10 +57,8 @@ function extractWithReadability(html: string, url: string) {
 function extractWithCheerio(html: string) {
   const $ = cheerio.load(html);
 
-  // Remove obvious junk
   $("script, style, noscript, iframe, svg").remove();
 
-  // Prefer main-ish containers
   const candidates = [
     "main",
     "article",
@@ -69,63 +76,84 @@ function extractWithCheerio(html: string) {
     if (t.length > text.length) text = t;
   }
 
-  // Fallback: whole body
   if (!text) text = $("body").text().trim();
-
   return text;
 }
 
+function jsonError(message: string, status = 400, extra?: any) {
+  return NextResponse.json(
+    { ok: false, error: message, ...(extra ? { extra } : {}) },
+    { status }
+  );
+}
+
 /**
- * ✅ POST /api/extract-job
+ * POST /api/extract-job
  * Body: { url }
  */
 export async function POST(req: Request) {
-  // ✅ Keep auth protection (matches your security model)
+  // Auth required
   const session = await getServerSession(authOptions);
   if (!session?.user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return jsonError("Unauthorized", 401);
+  }
+
+  let url: string;
+
+  // Always return JSON even if parsing fails
+  try {
+    const body = BodySchema.parse(await req.json());
+    url = body.url.trim();
+  } catch (err: any) {
+    return jsonError(err?.message ?? "Invalid request body.", 400);
   }
 
   try {
-    const body = BodySchema.parse(await req.json());
-    const url = body.url.trim();
+    const { res, html, contentType } = await fetchHtml(url);
 
-    const { res, html } = await fetchHtml(url);
-
-    if (!res.ok || !html || html.trim().length < 50) {
-      return NextResponse.json(
-        { ok: false, error: `Failed to fetch page (HTTP ${res.status}).` },
-        { status: 400 }
-      );
+    // If we got blocked or redirected to something non-HTML, return a clear JSON error.
+    if (!res.ok) {
+      return jsonError(`Failed to fetch page (HTTP ${res.status}).`, 400, {
+        url,
+        contentType,
+      });
     }
 
-    // Try Readability first
+    if (!html || html.trim().length < 50) {
+      return jsonError("Fetched page returned empty HTML.", 400, { url, contentType });
+    }
+
+    // Some sites return JSON or a bot-block page; still try, but be explicit.
+    // (We don't hard-fail on contentType because many sites lie about it.)
     let extractedText = "";
+
+    // 1) Readability
     try {
       extractedText = extractWithReadability(html, url);
     } catch {
       extractedText = "";
     }
 
-    // Cheerio fallback
+    // 2) Cheerio fallback
     if (!extractedText || extractedText.length < 200) {
-      extractedText = extractWithCheerio(html);
+      try {
+        extractedText = extractWithCheerio(html);
+      } catch {
+        extractedText = extractedText || "";
+      }
     }
 
     extractedText = cleanText(extractedText);
 
     if (!extractedText || extractedText.length < 200) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Could not extract enough readable text from this page. Try the Paste Job Description fallback.",
-        },
-        { status: 400 }
+      return jsonError(
+        "Could not extract enough readable text from this page. Try the Paste Job Description fallback.",
+        400,
+        { url }
       );
     }
 
-    // Title guess (best effort)
+    // Title guess
     let titleGuess: string | undefined;
     try {
       const dom = new JSDOM(html);
@@ -141,85 +169,44 @@ export async function POST(req: Request) {
       extractedText,
     });
   } catch (err: any) {
-    return NextResponse.json(
-      { ok: false, error: err?.message ?? "Unknown error" },
-      { status: 400 }
-    );
+    // AbortController timeout or any runtime error => still JSON
+    const msg =
+      err?.name === "AbortError"
+        ? "Timed out fetching the job page. Try again or use Paste Job Description."
+        : err?.message ?? "Unknown error extracting job.";
+
+    return jsonError(msg, 400, { url });
   }
 }
 
 /**
- * ✅ GET /api/extract-job?url=...
- * Optional convenience so you *never* hit 405 again if something calls GET.
+ * GET /api/extract-job?url=...
+ * Convenience for manual testing.
  */
 export async function GET(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return jsonError("Unauthorized", 401);
+  }
+
   const { searchParams } = new URL(req.url);
   const url = searchParams.get("url");
 
-  // Same auth protection
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  }
-
   if (!url) {
-    return NextResponse.json({ ok: false, error: "Missing url" }, { status: 400 });
+    return jsonError("Missing url", 400);
   }
 
-  // Reuse POST logic by calling it directly is annoying here; keep it simple:
+  // Reuse POST behavior safely by calling the same logic:
+  // easiest is to just run the same code path here.
   try {
     const parsed = BodySchema.parse({ url });
-    const { res, html } = await fetchHtml(parsed.url);
-
-    if (!res.ok || !html || html.trim().length < 50) {
-      return NextResponse.json(
-        { ok: false, error: `Failed to fetch page (HTTP ${res.status}).` },
-        { status: 400 }
-      );
-    }
-
-    let extractedText = "";
-    try {
-      extractedText = extractWithReadability(html, parsed.url);
-    } catch {
-      extractedText = "";
-    }
-
-    if (!extractedText || extractedText.length < 200) {
-      extractedText = extractWithCheerio(html);
-    }
-
-    extractedText = cleanText(extractedText);
-
-    if (!extractedText || extractedText.length < 200) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Could not extract enough readable text from this page. Try the Paste Job Description fallback.",
-        },
-        { status: 400 }
-      );
-    }
-
-    let titleGuess: string | undefined;
-    try {
-      const dom = new JSDOM(html);
-      titleGuess = dom.window.document.title?.trim() || undefined;
-    } catch {
-      titleGuess = undefined;
-    }
-
-    return NextResponse.json({
-      ok: true,
-      url: parsed.url,
-      titleGuess,
-      extractedText,
+    const fakeReq = new Request(req.url, {
+      method: "POST",
+      headers: req.headers,
+      body: JSON.stringify({ url: parsed.url }),
     });
+    return POST(fakeReq);
   } catch (err: any) {
-    return NextResponse.json(
-      { ok: false, error: err?.message ?? "Unknown error" },
-      { status: 400 }
-    );
+    return jsonError(err?.message ?? "Invalid url.", 400);
   }
 }

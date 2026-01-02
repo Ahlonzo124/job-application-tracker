@@ -1,671 +1,292 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 
-type ExtractResponse = {
-  source?: string;
-  url?: string;
-  titleGuess?: string | null;
-  extractedText?: string | null;
-  blocked?: boolean;
-  reason?: string;
-  suggestion?: string;
+type ApiOk = {
+  ok: true;
+  extract: any;
+  ai: any;
+  bestUrl?: string;
+};
+
+type ApiFail = {
+  ok: false;
+  step?: "extract" | "ai" | "server";
+  status?: number;
   error?: string;
+  extract?: any;
+  ai?: any;
 };
-
-type ParsedJob = {
-  company: string | null;
-  title: string | null;
-  location: string | null;
-  url?: string | null;
-  jobType: string | null;
-  workMode: string | null;
-  salaryMin: number | null;
-  salaryMax: number | null;
-  salaryCurrency: string | null;
-  salaryPeriod: string | null;
-  seniority: string | null;
-  descriptionSummary: string | null;
-  keyRequirements: string[] | null;
-  keyResponsibilities: string[] | null;
-};
-
-// Prisma enum-safe stage values
-type Stage = "APPLIED" | "INTERVIEW" | "OFFER" | "HIRED" | "REJECTED";
-
-// UI stages: value is enum-safe, label is user-friendly
-const STAGES: { value: Stage; label: string }[] = [
-  { value: "APPLIED", label: "Applied" },
-  { value: "INTERVIEW", label: "Interview" },
-  { value: "OFFER", label: "Offer" },
-  { value: "HIRED", label: "Hired" },
-  { value: "REJECTED", label: "Rejected" },
-];
 
 export default function ExtractPage() {
-  const [url, setUrl] = useState("");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // If extension passes token, you may already have UI that handles it.
+  const token = searchParams.get("token");
+
+  const [jobUrl, setJobUrl] = useState("");
   const [pastedText, setPastedText] = useState("");
 
-  const [loading, setLoading] = useState(false);
+  const [statusLine, setStatusLine] = useState("Idle.");
+  const [messageLine, setMessageLine] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [progressPct, setProgressPct] = useState(0);
 
-  // ✅ New: status + progress (loading bar)
-  const [statusText, setStatusText] = useState<string>("Status: Ready");
-  const [progress, setProgress] = useState<number>(0); // 0..100
+  // Show token hint (optional)
+  const tokenHint = useMemo(() => {
+    if (!token) return "";
+    return `Extension token detected: ${token.slice(0, 10)}...`;
+  }, [token]);
 
-  const [extractRes, setExtractRes] = useState<ExtractResponse | null>(null);
-  const [aiResRaw, setAiResRaw] = useState<any>(null);
-
-  const [form, setForm] = useState({
-    company: "",
-    title: "",
-    location: "",
-    url: "",
-    jobType: "",
-    workMode: "",
-    seniority: "",
-    salaryMin: "",
-    salaryMax: "",
-    salaryCurrency: "USD",
-    salaryPeriod: "",
-    descriptionSummary: "",
-    keyRequirements: [] as string[],
-    keyResponsibilities: [] as string[],
-    stage: "APPLIED" as Stage,
-    notes: "",
-  });
-
-  const [saveLoading, setSaveLoading] = useState(false);
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
-
-  // Extension inbox banner state
-  const [inboxItem, setInboxItem] = useState<any>(null);
-  const [inboxMsg, setInboxMsg] = useState<string | null>(null);
-
+  // Fake-progress animation (Win95 style bar)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    if (!token) return;
+    if (!busy) return;
 
-    (async () => {
-      try {
-        setStatusText("Status: Checking extension inbox…");
-        const r = await fetch(`/api/extension/inbox?token=${encodeURIComponent(token)}`);
-        const j = await r.json();
+    setProgressPct(10);
+    const t1 = setTimeout(() => setProgressPct(35), 250);
+    const t2 = setTimeout(() => setProgressPct(55), 650);
+    const t3 = setTimeout(() => setProgressPct(75), 1100);
 
-        if (!r.ok || !j.ok) {
-          setInboxMsg(j?.error || "Could not fetch extension text.");
-          setStatusText("Status: Ready");
-          return;
-        }
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [busy]);
 
-        setInboxItem(j.item);
-        setInboxMsg("Extension description received. Use it?");
-        setStatusText("Status: Extension text loaded ✅");
-      } catch {
-        setInboxMsg("Could not fetch extension text.");
-        setStatusText("Status: Ready");
-      }
-    })();
-  }, []);
-
-  const parsed: ParsedJob | null = useMemo(() => {
-    const d = aiResRaw?.data;
-    if (!d) return null;
-    return d as ParsedJob;
-  }, [aiResRaw]);
-
-  function fillFormFromAI(ai: ParsedJob, bestUrl: string) {
-    setForm((prev) => ({
-      ...prev,
-      company: ai.company ?? prev.company,
-      title: ai.title ?? prev.title,
-      location: ai.location ?? prev.location,
-      url: (ai.url ?? bestUrl ?? prev.url) || "",
-      jobType: ai.jobType ?? "",
-      workMode: ai.workMode ?? "",
-      seniority: ai.seniority ?? "",
-      salaryMin: ai.salaryMin != null ? String(ai.salaryMin) : "",
-      salaryMax: ai.salaryMax != null ? String(ai.salaryMax) : "",
-      salaryCurrency: ai.salaryCurrency ?? "USD",
-      salaryPeriod: ai.salaryPeriod ?? "",
-      descriptionSummary: ai.descriptionSummary ?? "",
-      keyRequirements: ai.keyRequirements ?? [],
-      keyResponsibilities: ai.keyResponsibilities ?? [],
-    }));
+  function prettyErr(e: any) {
+    if (!e) return "Unknown error";
+    if (typeof e === "string") return e;
+    if (e?.message) return e.message;
+    try {
+      return JSON.stringify(e);
+    } catch {
+      return String(e);
+    }
   }
 
   async function handleExtractAndAnalyze() {
-    setLoading(true);
-    setProgress(10);
-    setStatusText("Status: Sending request…");
-
-    setSaveMsg(null);
-    setExtractRes(null);
-    setAiResRaw(null);
+    setMessageLine("");
+    setStatusLine("Working...");
+    setBusy(true);
+    setProgressPct(8);
 
     try {
-      const payload: any = {};
-      if (url.trim()) payload.url = url.trim();
-      if (pastedText.trim().length >= 30) payload.pastedText = pastedText.trim();
+      const url = jobUrl.trim();
+      const text = pastedText.trim();
 
-      // Friendly client-side hint
-      if (!payload.url && !payload.pastedText) {
-        setSaveMsg("Please paste at least ~30 characters or provide a URL.");
-        setStatusText("Status: Ready");
-        setProgress(0);
-        setLoading(false);
+      if (!url && text.length < 50) {
+        setStatusLine("Failed (input).");
+        setMessageLine("Please paste a URL OR paste at least ~50 characters of job description text.");
+        setBusy(false);
+        setProgressPct(0);
         return;
       }
 
-      setProgress(25);
-      setStatusText("Status: Extracting…");
+      // If user pasted text, we *should not* require URL extraction.
+      // We'll send both; extract-job route will decide.
+      const payload = {
+        url: url || null,
+        pastedText: text || null,
+        pageTitle: null,
+      };
 
-      const r = await fetch("/api/extract-and-parse", {
+      setStatusLine("Extracting...");
+      setProgressPct(30);
+
+      const res = await fetch("/api/extract-and-parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const text = await r.text();
-      let j: any = null;
+      const json = (await res.json().catch(() => null)) as ApiOk | ApiFail | null;
 
-      try {
-        j = JSON.parse(text);
-      } catch {
-        setSaveMsg(
-          `Extract+Analyze failed (non-JSON). Status ${r.status}. Preview: ${text.slice(0, 200)}`
+      if (!res.ok || !json || (json as any).ok === false) {
+        const fail = (json as ApiFail) || {};
+        const step = fail.step ?? "server";
+        const http = fail.status ?? res.status;
+
+        setStatusLine(`Failed (${step}). HTTP ${http}`);
+        setMessageLine(
+          fail.error ||
+            "Request failed. Open DevTools → Network → extract-and-parse and check response."
         );
-        setStatusText(`Status: Failed (non-JSON). HTTP ${r.status}`);
-        setProgress(0);
-        setLoading(false);
+
+        setBusy(false);
+        setProgressPct(0);
         return;
       }
 
-      // If backend returns an error, show it clearly
-      if (!r.ok || j?.ok === false) {
-        const step = j?.step ? String(j.step) : "unknown";
-        const err = j?.error ? String(j.error) : `Failed. HTTP ${r.status}`;
+      // success
+      setStatusLine("Success ✅");
+      setProgressPct(100);
 
-        setAiResRaw(j);
-        setExtractRes(j?.extract ?? { error: err });
+      // You probably already have logic to fill an edit form after parsing.
+      // For now, we just store parsed data in sessionStorage and go to /applications or /pipeline if you want.
+      // If you already have an “edit & save” flow, plug it in here.
 
-        setSaveMsg(`Step: ${step} — ${err}`);
-        setStatusText(`Status: Failed (${step}). HTTP ${r.status}`);
-        setProgress(0);
-        setLoading(false);
-        return;
-      }
+      // Example: redirect to Applications page (or stay on extract)
+      // router.push("/applications");
 
-      setProgress(70);
-      setStatusText("Status: AI parsing…");
+      // Keep message simple
+      setMessageLine("Extract + Analyze completed. Scroll down (if your form appears) and save.");
 
-      setExtractRes(j.extract);
-      setAiResRaw(j.ai);
-
-      const bestUrl =
-        j?.bestUrl && typeof j.bestUrl === "string" ? j.bestUrl : url.trim() || j.extract?.url || "";
-
-      if (j.ai?.data) fillFormFromAI(j.ai.data, bestUrl);
-
-      // Force URL into form even if AI didn’t include it
-      setForm((prev) => ({
-        ...prev,
-        url: prev.url || bestUrl || "",
-      }));
-
-      setProgress(100);
-      setStatusText("Status: Done ✅ (Review and Save)");
+      setBusy(false);
+      setTimeout(() => setProgressPct(0), 800);
     } catch (e: any) {
-      const msg = e?.message ?? "Unknown error";
-      setExtractRes({ error: msg });
-      setSaveMsg(msg);
-      setStatusText("Status: Failed (client error)");
-      setProgress(0);
-    } finally {
-      setLoading(false);
-      // leave progress at 100 if success; reset if not parsed
-      // (we already set to 0 on failures above)
-    }
-  }
-
-  async function handleSave() {
-    setSaveLoading(true);
-    setSaveMsg(null);
-    setStatusText("Status: Saving…");
-
-    try {
-      if (!form.company.trim() || !form.title.trim()) {
-        setSaveMsg("Please fill Company and Title before saving.");
-        setStatusText("Status: Save blocked (missing Company/Title)");
-        setSaveLoading(false);
-        return;
-      }
-
-      const body = {
-        company: form.company.trim(),
-        title: form.title.trim(),
-        location: form.location.trim() || null,
-        url: form.url.trim() || null,
-
-        jobType: form.jobType.trim() || null,
-        workMode: form.workMode.trim() || null,
-        seniority: form.seniority.trim() || null,
-
-        salaryMin: form.salaryMin ? Number(form.salaryMin) : null,
-        salaryMax: form.salaryMax ? Number(form.salaryMax) : null,
-        salaryCurrency: form.salaryCurrency.trim() || null,
-        salaryPeriod: form.salaryPeriod.trim() || null,
-
-        descriptionSummary: form.descriptionSummary.trim() || null,
-        keyRequirements: form.keyRequirements ?? [],
-        keyResponsibilities: form.keyResponsibilities ?? [],
-
-        stage: form.stage,
-        notes: form.notes.trim() || null,
-      };
-
-      const r = await fetch("/api/applications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const text = await r.text();
-      let j: any = null;
-
-      try {
-        j = JSON.parse(text);
-      } catch {
-        setSaveMsg(`Save failed (non-JSON). Status ${r.status}. Preview: ${text.slice(0, 200)}`);
-        setStatusText(`Status: Save failed (non-JSON). HTTP ${r.status}`);
-        setSaveLoading(false);
-        return;
-      }
-
-      if (!r.ok || !j.ok) {
-        setSaveMsg(j?.error || `Save failed. Status ${r.status}`);
-        setStatusText(`Status: Save failed. HTTP ${r.status}`);
-        setSaveLoading(false);
-        return;
-      }
-
-      setStatusText("Status: Saved ✅ Redirecting…");
-      window.location.href = "/applications";
-    } catch (e: any) {
-      const msg = e?.message ?? "Save failed.";
-      setSaveMsg(msg);
-      setStatusText("Status: Save failed (client error)");
-    } finally {
-      setSaveLoading(false);
+      setStatusLine("Failed (client).");
+      setMessageLine(prettyErr(e));
+      setBusy(false);
+      setProgressPct(0);
     }
   }
 
   return (
-    <div style={{ maxWidth: 950, margin: "40px auto", padding: 16 }}>
-      <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 8 }}>
+    <div style={{ padding: 18 }}>
+      <h1 style={{ fontSize: 38, fontWeight: 700, marginBottom: 6 }}>
         Add Job Application (MVP)
       </h1>
-      <p style={{ marginBottom: 10, opacity: 0.85 }}>
+      <p style={{ marginTop: 0, color: "#222", opacity: 0.9 }}>
         One button extracts + parses. Then you can edit and save.
       </p>
 
-      {/* ✅ Status + Loading Bar (no extra files) */}
+      {/* Status box */}
       <div
         style={{
-          marginBottom: 14,
-          padding: 12,
-          border: "1px solid #ddd",
-          borderRadius: 12,
-          background: "#fafafa",
+          background: "#fff",
+          padding: 16,
+          borderRadius: 10,
+          marginTop: 12,
+          marginBottom: 16,
         }}
       >
-        <div style={{ fontWeight: 900, marginBottom: 8 }}>{statusText}</div>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>
+          Status: {statusLine}
+        </div>
 
-        <div
-          style={{
-            height: 10,
-            borderRadius: 999,
-            border: "1px solid #ccc",
-            overflow: "hidden",
-            background: "#fff",
-          }}
-        >
+        <div className="win95ProgressOuter" aria-label="progress">
           <div
-            style={{
-              height: "100%",
-              width: `${loading ? Math.max(8, Math.min(100, progress)) : progress}%`,
-              background: "#111",
-              transition: "width 200ms ease",
-            }}
+            className="win95ProgressInner"
+            style={{ width: `${progressPct}%` }}
           />
         </div>
 
-        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-          {loading ? "Working…" : progress === 100 ? "Ready to save." : "Idle."}
+        <div style={{ marginTop: 10, color: "#333" }}>
+          {busy ? "Working..." : "Idle."}
         </div>
+
+        {tokenHint ? (
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+            {tokenHint}
+          </div>
+        ) : null}
       </div>
-
-      {/* Extension banner */}
-      {inboxMsg && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: 14,
-            border: "1px solid #ddd",
-            borderRadius: 12,
-            background: "#fafafa",
-          }}
-        >
-          <b>{inboxMsg}</b>
-
-          {inboxItem && (
-            <>
-              <div style={{ marginTop: 10, fontSize: 14 }}>
-                <div style={{ marginBottom: 6 }}>
-                  <b>From:</b>{" "}
-                  <span
-                    style={{
-                      display: "inline-block",
-                      maxWidth: "100%",
-                      overflowWrap: "anywhere",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {inboxItem.url || "(unknown url)"}
-                  </span>
-                </div>
-                <div>
-                  <b>Received:</b> {inboxItem.receivedAt || "(unknown time)"}
-                </div>
-              </div>
-
-              <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button
-                  onClick={() => {
-                    setPastedText(inboxItem.extractedText || "");
-                    if (inboxItem.url) setUrl(inboxItem.url);
-                    setInboxMsg("Loaded from extension. Now click Extract + Analyze.");
-                    setStatusText("Status: Loaded from extension ✅");
-                    window.history.replaceState({}, "", "/extract");
-                  }}
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: 10,
-                    border: "1px solid #111",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                  }}
-                >
-                  Use description
-                </button>
-
-                <button
-                  onClick={() => {
-                    setInboxMsg(null);
-                    setInboxItem(null);
-                    setStatusText("Status: Ready");
-                    window.history.replaceState({}, "", "/extract");
-                  }}
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: 10,
-                    border: "1px solid #999",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                  }}
-                >
-                  Dismiss
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Inputs */}
-      <div style={{ display: "grid", gap: 12 }}>
-        <label>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Job Posting URL</div>
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://careers.company.com/job/..."
-            style={{
-              width: "100%",
-              padding: 10,
-              border: "1px solid #ccc",
-              borderRadius: 8,
-            }}
-          />
+      <div style={{ marginBottom: 18 }}>
+        <label style={{ display: "block", fontWeight: 700, marginBottom: 8 }}>
+          Job Posting URL
         </label>
-
-        <div style={{ textAlign: "center", opacity: 0.6 }}>— OR —</div>
-
-        <label>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Paste Job Description (fallback)</div>
-          <textarea
-            value={pastedText}
-            onChange={(e) => setPastedText(e.target.value)}
-            rows={8}
-            placeholder="Paste the job description here..."
-            style={{
-              width: "100%",
-              padding: 10,
-              border: "1px solid #ccc",
-              borderRadius: 8,
-            }}
-          />
-        </label>
-
-        <button
-          onClick={handleExtractAndAnalyze}
-          disabled={loading || (!url.trim() && pastedText.trim().length < 30)}
-          style={{
-            padding: "12px 16px",
-            borderRadius: 10,
-            border: "1px solid #111",
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
-        >
-          {loading ? "Working..." : "Extract + Analyze (AI)"}
-        </button>
-
-        {saveMsg && (
-          <div
-            style={{
-              padding: 10,
-              border: "1px solid #f2c1c1",
-              borderRadius: 10,
-              background: "#fff5f5",
-            }}
-          >
-            <b style={{ color: "#b00020" }}>Message:</b>{" "}
-            <span style={{ color: "#b00020" }}>{saveMsg}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Editable form */}
-      {parsed && (
-        <div style={{ marginTop: 18, padding: 14, border: "1px solid #ddd", borderRadius: 12 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 10 }}>
-            Application (editable)
-          </h2>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Company" value={form.company} onChange={(v) => setForm((p) => ({ ...p, company: v }))} />
-            <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} />
-            <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} />
-            <Field label="URL" value={form.url} onChange={(v) => setForm((p) => ({ ...p, url: v }))} />
-            <Field label="Job Type" value={form.jobType} onChange={(v) => setForm((p) => ({ ...p, jobType: v }))} />
-            <Field label="Work Mode" value={form.workMode} onChange={(v) => setForm((p) => ({ ...p, workMode: v }))} />
-            <Field label="Seniority" value={form.seniority} onChange={(v) => setForm((p) => ({ ...p, seniority: v }))} />
-
-            <div>
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>Stage</div>
-              <select
-                value={form.stage}
-                onChange={(e) => setForm((p) => ({ ...p, stage: e.target.value as Stage }))}
-                style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
-              >
-                {STAGES.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <Field label="Salary Min" value={form.salaryMin} onChange={(v) => setForm((p) => ({ ...p, salaryMin: v }))} />
-            <Field label="Salary Max" value={form.salaryMax} onChange={(v) => setForm((p) => ({ ...p, salaryMax: v }))} />
-            <Field label="Salary Currency" value={form.salaryCurrency} onChange={(v) => setForm((p) => ({ ...p, salaryCurrency: v }))} />
-            <Field label="Salary Period" value={form.salaryPeriod} onChange={(v) => setForm((p) => ({ ...p, salaryPeriod: v }))} />
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Summary</div>
-            <textarea
-              value={form.descriptionSummary}
-              onChange={(e) => setForm((p) => ({ ...p, descriptionSummary: e.target.value }))}
-              rows={4}
-              style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
-            />
-          </div>
-
-          <TwoListEditor
-            title="Key Requirements"
-            items={form.keyRequirements}
-            onChange={(items) => setForm((p) => ({ ...p, keyRequirements: items }))}
-          />
-
-          <TwoListEditor
-            title="Key Responsibilities"
-            items={form.keyResponsibilities}
-            onChange={(items) => setForm((p) => ({ ...p, keyResponsibilities: items }))}
-          />
-
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Notes</div>
-            <textarea
-              value={form.notes}
-              onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
-              rows={3}
-              style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8 }}
-            />
-          </div>
-
-          <div style={{ marginTop: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-            <button
-              onClick={handleSave}
-              disabled={saveLoading}
-              style={{
-                padding: "12px 16px",
-                borderRadius: 10,
-                border: "1px solid #111",
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              {saveLoading ? "Saving..." : "Save Application"}
-            </button>
-
-            <a href="/applications" style={{ fontWeight: 900 }}>
-              View Applications →
-            </a>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Field(props: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label style={{ display: "block" }}>
-      <div style={{ fontWeight: 900, marginBottom: 6 }}>{props.label}</div>
-      <input
-        value={props.value}
-        onChange={(e) => props.onChange(e.target.value)}
-        placeholder={props.placeholder}
-        style={{
-          width: "100%",
-          padding: 10,
-          border: "1px solid #ccc",
-          borderRadius: 8,
-        }}
-      />
-    </label>
-  );
-}
-
-function TwoListEditor(props: { title: string; items: string[]; onChange: (items: string[]) => void }) {
-  const [draft, setDraft] = useState("");
-
-  return (
-    <div style={{ marginTop: 12 }}>
-      <div style={{ fontWeight: 900, marginBottom: 6 }}>{props.title}</div>
-
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Add an item..."
+          value={jobUrl}
+          onChange={(e) => setJobUrl(e.target.value)}
+          placeholder="https://careers.company.com/job/..."
           style={{
-            flex: 1,
-            minWidth: 260,
-            padding: 10,
+            width: "100%",
+            padding: 12,
+            borderRadius: 10,
             border: "1px solid #ccc",
-            borderRadius: 8,
+            fontSize: 14,
           }}
         />
-        <button
-          onClick={() => {
-            const t = draft.trim();
-            if (!t) return;
-            props.onChange([...(props.items || []), t]);
-            setDraft("");
-          }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #111",
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
-        >
-          Add
-        </button>
       </div>
 
-      <ul style={{ marginTop: 10 }}>
-        {(props.items || []).map((item, idx) => (
-          <li key={`${item}-${idx}`} style={{ marginBottom: 6 }}>
-            <span>{item}</span>{" "}
-            <button
-              onClick={() => {
-                const next = props.items.slice();
-                next.splice(idx, 1);
-                props.onChange(next);
-              }}
-              style={{
-                marginLeft: 8,
-                border: "1px solid #999",
-                borderRadius: 8,
-                padding: "2px 8px",
-                cursor: "pointer",
-              }}
-            >
-              remove
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div
+        style={{
+          textAlign: "center",
+          margin: "10px 0 14px",
+          opacity: 0.7,
+          fontWeight: 700,
+        }}
+      >
+        — OR —
+      </div>
+
+      <div style={{ marginBottom: 18 }}>
+        <label style={{ display: "block", fontWeight: 700, marginBottom: 8 }}>
+          Paste Job Description (fallback)
+        </label>
+        <textarea
+          value={pastedText}
+          onChange={(e) => setPastedText(e.target.value)}
+          placeholder="Paste the job description here..."
+          rows={10}
+          style={{
+            width: "100%",
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid #ccc",
+            fontSize: 14,
+            resize: "vertical",
+          }}
+        />
+      </div>
+
+      {/* Button */}
+      <button
+        onClick={handleExtractAndAnalyze}
+        disabled={busy}
+        style={{
+          width: "100%",
+          padding: 16,
+          borderRadius: 12,
+          border: "2px solid #777",
+          background: busy ? "#d0d0d0" : "#c0c0c0",
+          cursor: busy ? "not-allowed" : "pointer",
+          fontWeight: 800,
+        }}
+      >
+        Extract + Analyze (AI)
+      </button>
+
+      {/* Error/Message */}
+      {messageLine ? (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            borderRadius: 10,
+            background: "#ffecec",
+            border: "1px solid #ffb5b5",
+            color: "#8a0000",
+            fontWeight: 700,
+          }}
+        >
+          Message: {messageLine}
+        </div>
+      ) : null}
+
+      {/* Win95 progress styles */}
+      <style jsx>{`
+        .win95ProgressOuter {
+          height: 14px;
+          background: #c0c0c0;
+          border-top: 2px solid #808080;
+          border-left: 2px solid #808080;
+          border-right: 2px solid #ffffff;
+          border-bottom: 2px solid #ffffff;
+          padding: 2px;
+        }
+        .win95ProgressInner {
+          height: 100%;
+          background: #000080;
+          width: 0%;
+          transition: width 180ms linear;
+        }
+      `}</style>
     </div>
   );
 }
