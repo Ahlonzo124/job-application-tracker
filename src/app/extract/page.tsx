@@ -31,7 +31,8 @@ export default function ExtractPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const token = searchParams.get("token"); // extension token
+  const token = searchParams.get("token"); // string | null
+  const tokenStr = token ?? ""; // ✅ always string for encoding / display
 
   const [jobUrl, setJobUrl] = useState("");
   const [pastedText, setPastedText] = useState("");
@@ -46,9 +47,9 @@ export default function ExtractPage() {
   const [lastParse, setLastParse] = useState<ApiOk | null>(null);
 
   const tokenHint = useMemo(() => {
-    if (!token) return "";
-    return `Extension token detected: ${token.slice(0, 10)}...`;
-  }, [token]);
+    if (!tokenStr) return "";
+    return `Extension token detected: ${tokenStr.slice(0, 10)}...`;
+  }, [tokenStr]);
 
   function prettyErr(e: any) {
     if (!e) return "Unknown error";
@@ -79,7 +80,7 @@ export default function ExtractPage() {
 
   // ✅ NEW: when token exists, pull data from inbox
   useEffect(() => {
-    if (!token) return;
+    if (!tokenStr) return;
 
     let cancelled = false;
 
@@ -90,10 +91,13 @@ export default function ExtractPage() {
       setLastParse(null);
 
       try {
-        const res = await fetch(`/api/extension/inbox?token=${encodeURIComponent(token)}`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        });
+        const res = await fetch(
+          `/api/extension/inbox?token=${encodeURIComponent(tokenStr)}`,
+          {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          }
+        );
 
         const json = await res.json().catch(() => null);
 
@@ -139,7 +143,7 @@ export default function ExtractPage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [tokenStr]);
 
   async function handleExtractAndAnalyze() {
     setMessageLine("");
@@ -164,7 +168,7 @@ export default function ExtractPage() {
         url: url || "",
         pastedText: text || "",
         pageTitle: null,
-        token: token || null,
+        token: tokenStr || null,
       };
 
       setStatusLine("Extracting + parsing...");
