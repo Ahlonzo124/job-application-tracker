@@ -28,7 +28,7 @@ export default function LoginPage() {
     }
 
     // go to desktop after login
-    window.location.href = "/";
+    window.location.href = "/app";
   }
 
   return (
@@ -65,11 +65,7 @@ export default function LoginPage() {
               />
             </div>
 
-            {error && (
-              <div style={styles.errorBox}>
-                {error}
-              </div>
-            )}
+            {error && <div style={styles.errorBox}>{error}</div>}
 
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <button style={styles.button} type="submit" disabled={loading}>
@@ -84,6 +80,17 @@ export default function LoginPage() {
 
           <div style={styles.note}>
             No password recovery. Write down your username/password.
+          </div>
+
+          {/* ✅ Privacy policy link for Google/AdSense compliance */}
+          <div style={styles.footerLinks}>
+            <a href="/privacy" style={styles.footerLink}>
+              Privacy Policy
+            </a>
+            <span style={{ opacity: 0.6 }}>•</span>
+            <a href="/about" style={styles.footerLink}>
+              About
+            </a>
           </div>
         </div>
       </div>
@@ -150,5 +157,17 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 12,
     fontSize: 12,
     opacity: 0.85,
+  },
+
+  footerLinks: {
+    marginTop: 12,
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    fontSize: 12,
+  },
+  footerLink: {
+    color: "#000080",
+    textDecoration: "underline",
   },
 };
