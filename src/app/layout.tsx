@@ -9,14 +9,19 @@ export const metadata: Metadata = {
   description: "Track job applications like it's 1995.",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
+        {/* ✅ AdSense (must be visible to crawlers; load early) */}
+        <Script
+          id="adsense"
+          strategy="beforeInteractive"
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9366880450381021"
+          crossOrigin="anonymous"
+        />
+
         {/* Google Analytics */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-9JLBGCQ72S"
@@ -34,14 +39,6 @@ export default function RootLayout({
             });
           `}
         </Script>
-
-        {/* Google AdSense */}
-        <Script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9366880450381021"
-          crossOrigin="anonymous"
-          strategy="afterInteractive"
-        />
       </head>
 
       <body>
