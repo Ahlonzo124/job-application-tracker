@@ -24,6 +24,11 @@ export default function DesktopShell({ children }: { children: React.ReactNode }
       ? `Job Application Tracker — ${username}`
       : "Job Application Tracker";
 
+  // ✅ Home routing rule:
+  // - signed out → public landing (with ads)
+  // - signed in → instructions / quickstart page
+  const homeHref = isAuthed ? "/home" : "/";
+
   useEffect(() => {
     const tick = () => {
       setClock(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
@@ -49,7 +54,7 @@ export default function DesktopShell({ children }: { children: React.ReactNode }
           <div className="desktop-left">
             <div className="desktop-icons">
               {/* Always visible */}
-              <DesktopIcon label="Home" href="/" iconSrc="/icons/home.svg" onOpen={setLoadingMsg} />
+              <DesktopIcon label="Home" href={homeHref} iconSrc="/icons/home.svg" onOpen={setLoadingMsg} />
 
               {isAuthed ? (
                 <>
@@ -111,6 +116,8 @@ export default function DesktopShell({ children }: { children: React.ReactNode }
       </div>
 
       <div className="taskbar">
+        {/* NOTE: StartMenu likely contains a Home link too.
+            We'll update StartMenu once you paste it. */}
         <StartMenu onOpenApp={setLoadingMsg} />
 
         <div className="win95-panel" style={{ padding: "6px 10px" }}>

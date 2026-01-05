@@ -6,15 +6,6 @@ import { signOut, useSession } from "next-auth/react";
 
 type Item = { label: string; href: string };
 
-const ITEMS: Item[] = [
-  { label: "Home", href: "/" },
-  { label: "Pipeline", href: "/pipeline" },
-  { label: "Applications", href: "/applications" },
-  { label: "Extract Job", href: "/extract" },
-  { label: "Analytics", href: "/analytics" },
-  { label: "About", href: "/about" },
-];
-
 export default function StartMenu({ onOpenApp }: { onOpenApp: (msg: string) => void }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -23,7 +14,26 @@ export default function StartMenu({ onOpenApp }: { onOpenApp: (msg: string) => v
   const isAuthed = status === "authenticated";
 
   const username =
-    (session?.user as any)?.username || session?.user?.name || session?.user?.email || "Guest";
+    (session?.user as any)?.username ||
+    session?.user?.name ||
+    session?.user?.email ||
+    "Guest";
+
+  // ✅ Home routing rule
+  const homeHref = isAuthed ? "/home" : "/";
+
+  const ITEMS: Item[] = [
+    { label: "Home", href: homeHref },
+    ...(isAuthed
+      ? [
+          { label: "Pipeline", href: "/pipeline" },
+          { label: "Applications", href: "/applications" },
+          { label: "Extract Job", href: "/extract" },
+          { label: "Analytics", href: "/analytics" },
+        ]
+      : []),
+    { label: "About", href: "/about" },
+  ];
 
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
@@ -68,13 +78,10 @@ export default function StartMenu({ onOpenApp }: { onOpenApp: (msg: string) => v
           </div>
 
           <div className="start-menu-items">
-            {/* Who is logged in */}
             <div
               className="start-menu-item"
               style={{ cursor: "default", opacity: 0.9 }}
-              role="menuitem"
               aria-disabled="true"
-              onClick={(e) => e.preventDefault()}
             >
               User: <b>{username}</b>
             </div>
@@ -98,7 +105,6 @@ export default function StartMenu({ onOpenApp }: { onOpenApp: (msg: string) => v
 
             <div className="start-menu-sep" />
 
-            {/* Auth actions */}
             {!isAuthed ? (
               <DesktopNavLink
                 href="/signup"
@@ -133,7 +139,6 @@ export default function StartMenu({ onOpenApp }: { onOpenApp: (msg: string) => v
                   e.preventDefault();
                   handleLogout();
                 }}
-                role="menuitem"
               >
                 Log Out
               </a>
@@ -148,7 +153,6 @@ export default function StartMenu({ onOpenApp }: { onOpenApp: (msg: string) => v
                 e.preventDefault();
                 setOpen(false);
               }}
-              role="menuitem"
             >
               Close Menu
             </a>

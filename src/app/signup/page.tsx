@@ -1,9 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 
+function useIsMobile(maxWidth = 900) {
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia(`(max-width: ${maxWidth}px)`);
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [maxWidth]);
+
+  return isMobile;
+}
+
 export default function SignupPage() {
+  const isMobile = useIsMobile(900);
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -37,7 +53,6 @@ export default function SignupPage() {
 
     setCreated(true);
 
-    // Auto-login after signup
     const login = await signIn("credentials", {
       username,
       password,
@@ -54,19 +69,24 @@ export default function SignupPage() {
     window.location.href = "/";
   }
 
-  return (
-    <div style={styles.screen}>
-      <div style={styles.window}>
-        <div style={styles.titlebar}>
-          <div>Sign Up</div>
-        </div>
+  if (isMobile === null) return null;
 
-        <div style={styles.body}>
-          <div style={{ marginBottom: 10 }}>
-            <b>Create a username + password</b>
-          </div>
+  // ✅ MOBILE: render only content (MobileShell provides the window/background)
+  if (isMobile) {
+    return (
+      <main style={{ padding: 0, maxWidth: "100%" }}>
+        <div className="win95-panel" style={{ padding: 10 }}>
+          <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 8 }}>Sign Up</div>
 
-          <div style={styles.warning}>
+          <div
+            className="win95-panel"
+            style={{
+              marginBottom: 10,
+              padding: 10,
+              border: "2px solid #808000",
+              background: "#fff",
+            }}
+          >
             <div style={{ fontWeight: 700, marginBottom: 6 }}>Important</div>
             <div style={{ fontSize: 12 }}>
               There is <b>NO</b> password recovery. Write down your username and password.
@@ -75,132 +95,242 @@ export default function SignupPage() {
 
           <form onSubmit={handleSignup}>
             <div style={{ marginBottom: 8 }}>
-              <div style={styles.label}>Username</div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Username</div>
               <input
-                style={styles.input}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
+                style={{ width: "100%" }}
               />
-              <div style={styles.hint}>Letters/numbers/underscore only. 3–24 chars.</div>
+              <div style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>
+                Letters/numbers/underscore only. 3–24 chars.
+              </div>
             </div>
 
             <div style={{ marginBottom: 8 }}>
-              <div style={styles.label}>Password</div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Password</div>
               <input
-                style={styles.input}
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
+                style={{ width: "100%" }}
               />
-              <div style={styles.hint}>Min 8 characters.</div>
+              <div style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>
+                Min 8 characters.
+              </div>
             </div>
 
             <div style={{ marginBottom: 8 }}>
-              <div style={styles.label}>Confirm Password</div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Confirm Password</div>
               <input
-                style={styles.input}
                 type="password"
                 value={password2}
                 onChange={(e) => setPassword2(e.target.value)}
                 autoComplete="new-password"
+                style={{ width: "100%" }}
               />
             </div>
 
-            {error && <div style={styles.errorBox}>{error}</div>}
-            {created && !error && (
-              <div style={styles.okBox}>Account created. Logging you in…</div>
-            )}
+            {error ? (
+              <div
+                className="win95-panel"
+                style={{
+                  marginTop: 8,
+                  padding: 8,
+                  border: "2px solid #800000",
+                  color: "#800000",
+                  background: "#fff",
+                  fontSize: 12,
+                }}
+              >
+                {error}
+              </div>
+            ) : null}
 
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button style={styles.button} type="submit" disabled={loading}>
+            {created && !error ? (
+              <div
+                className="win95-panel"
+                style={{
+                  marginTop: 8,
+                  padding: 8,
+                  border: "2px solid #008000",
+                  color: "#008000",
+                  background: "#fff",
+                  fontSize: 12,
+                }}
+              >
+                Account created. Logging you in…
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+              <button type="submit" disabled={loading} style={{ fontWeight: 900 }}>
                 {loading ? "Creating..." : "Create Account"}
               </button>
 
-              <a href="/login" style={{ ...styles.button, textDecoration: "none" }}>
+              <a href="/login" className="win95-btn" style={{ textDecoration: "none", fontWeight: 900 }}>
                 Back to Login
               </a>
             </div>
           </form>
+
+          <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", fontSize: 12 }}>
+            <a href="/privacy" style={{ color: "#000080", textDecoration: "underline" }}>
+              Privacy Policy
+            </a>
+            <span style={{ opacity: 0.6 }}>•</span>
+            <a href="/about" style={{ color: "#000080", textDecoration: "underline" }}>
+              About
+            </a>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // ✅ DESKTOP: keep standalone centered signup window
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        background: "var(--desk)",
+        padding: 12,
+        overflowX: "hidden",
+      }}
+    >
+      <div
+        className="win95-window"
+        style={{
+          width: "min(460px, calc(100vw - 24px))",
+          maxWidth: "100%",
+        }}
+      >
+        <div className="win95-titlebar">
+          <span>Sign Up</span>
+          <div className="spacer" />
+          <div className="controls">
+            <button className="ctrl-btn" aria-label="Close" disabled>
+              ×
+            </button>
+          </div>
+        </div>
+
+        <div className="win95-content" style={{ padding: 12, maxWidth: "100%", overflow: "hidden" }}>
+          <div style={{ marginBottom: 10 }}>
+            <b>Create a username + password</b>
+          </div>
+
+          <div
+            className="win95-panel"
+            style={{
+              marginBottom: 10,
+              padding: 10,
+              border: "2px solid #808000",
+              background: "#fff",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Important</div>
+            <div style={{ fontSize: 12 }}>
+              There is <b>NO</b> password recovery. Write down your username and password.
+            </div>
+          </div>
+
+          <form onSubmit={handleSignup}>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Username</div>
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                style={{ width: "100%" }}
+              />
+              <div style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>
+                Letters/numbers/underscore only. 3–24 chars.
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Password</div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                style={{ width: "100%" }}
+              />
+              <div style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>
+                Min 8 characters.
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Confirm Password</div>
+              <input
+                type="password"
+                value={password2}
+                onChange={(e) => setPassword2(e.target.value)}
+                autoComplete="new-password"
+                style={{ width: "100%" }}
+              />
+            </div>
+
+            {error ? (
+              <div
+                className="win95-panel"
+                style={{
+                  marginTop: 8,
+                  padding: 8,
+                  border: "2px solid #800000",
+                  color: "#800000",
+                  background: "#fff",
+                  fontSize: 12,
+                }}
+              >
+                {error}
+              </div>
+            ) : null}
+
+            {created && !error ? (
+              <div
+                className="win95-panel"
+                style={{
+                  marginTop: 8,
+                  padding: 8,
+                  border: "2px solid #008000",
+                  color: "#008000",
+                  background: "#fff",
+                  fontSize: 12,
+                }}
+              >
+                Account created. Logging you in…
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+              <button type="submit" disabled={loading} style={{ fontWeight: 900 }}>
+                {loading ? "Creating..." : "Create Account"}
+              </button>
+
+              <a href="/login" className="win95-btn" style={{ textDecoration: "none", fontWeight: 900 }}>
+                Back to Login
+              </a>
+            </div>
+          </form>
+
+          <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", fontSize: 12 }}>
+            <a href="/privacy" style={{ color: "#000080", textDecoration: "underline" }}>
+              Privacy Policy
+            </a>
+            <span style={{ opacity: 0.6 }}>•</span>
+            <a href="/about" style={{ color: "#000080", textDecoration: "underline" }}>
+              About
+            </a>
+          </div>
         </div>
       </div>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  screen: {
-    minHeight: "100vh",
-    display: "grid",
-    placeItems: "center",
-    background: "#008080",
-    padding: 24,
-  },
-  window: {
-    width: 460,
-    background: "#c0c0c0",
-    border: "2px solid #000",
-    boxShadow: "2px 2px 0 #000",
-  },
-  titlebar: {
-    background: "#000080",
-    color: "white",
-    padding: "6px 8px",
-    fontWeight: 700,
-    fontSize: 14,
-  },
-  body: {
-    padding: 12,
-    fontSize: 13,
-  },
-  label: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  input: {
-    width: "100%",
-    padding: 6,
-    border: "2px inset #fff",
-    background: "white",
-    fontSize: 14,
-    outline: "none",
-  },
-  hint: {
-    fontSize: 11,
-    opacity: 0.85,
-    marginTop: 4,
-  },
-  button: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "6px 12px",
-    background: "#c0c0c0",
-    border: "2px outset #fff",
-    color: "#000",
-    cursor: "pointer",
-  },
-  warning: {
-    padding: 10,
-    background: "#fff",
-    border: "2px solid #808000",
-    marginBottom: 10,
-  },
-  errorBox: {
-    marginTop: 8,
-    padding: 8,
-    background: "#fff",
-    border: "2px solid #800000",
-    color: "#800000",
-    fontSize: 12,
-  },
-  okBox: {
-    marginTop: 8,
-    padding: 8,
-    background: "#fff",
-    border: "2px solid #008000",
-    color: "#008000",
-    fontSize: 12,
-  },
-};

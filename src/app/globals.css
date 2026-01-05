@@ -32,6 +32,8 @@
 html,
 body {
   height: 100%;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -240,7 +242,6 @@ th {
   border: none;
 }
 
-
 .desktop-icon .label {
   padding: 2px 4px;
   display: inline-block;
@@ -401,12 +402,16 @@ th {
 }
 
 .start-menu-item {
-  display: block;
+  display: flex;
+  gap: 10px;
+  align-items: center;
   padding: 6px 8px;
-  color: #000;
-  text-decoration: none;
-  background: transparent;
-  border: 1px solid transparent;
+  cursor: pointer;
+
+  border-top: 1px solid transparent;
+  border-left: 1px solid transparent;
+  border-right: 1px solid transparent;
+  border-bottom: 1px solid transparent;
 }
 
 .start-menu-item:hover {
@@ -414,16 +419,15 @@ th {
   color: #fff;
 }
 
-.start-menu-item:focus-visible {
-  outline: 1px dotted #000;
-  outline-offset: -3px;
+.start-menu-item .sm-icon {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
 }
 
-.start-menu-sep {
-  height: 2px;
-  background: var(--dark);
-  border-bottom: 1px solid var(--light);
-  margin: 4px 0;
+.start-menu-item .sm-label {
+  flex: 1;
 }
 
 /* =========================
@@ -482,4 +486,42 @@ th {
   flex: 1;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+/* =========================
+   Mobile fixes (dev + phones)
+   ========================= */
+
+@media (max-width: 900px) {
+  /* Avoid sideways scroll / background “cuts” */
+  html, body {
+    overflow-x: hidden;
+  }
+
+  /* Mobile shell uses taskbar too; allow for phone safe area */
+  .taskbar {
+    height: calc(var(--taskbar-h) + env(safe-area-inset-bottom));
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
+  }
+
+  /* Pipeline board: don’t clip on small screens */
+  .pipeline-board {
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .pipeline-columns {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+
+  /* Make sure panels/windows never exceed viewport width */
+  .win95-window,
+  .win95-panel,
+  .win95-content,
+  main {
+    max-width: 100%;
+  }
 }

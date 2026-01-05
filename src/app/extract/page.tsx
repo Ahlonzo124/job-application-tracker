@@ -31,8 +31,8 @@ export default function ExtractPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const token = searchParams.get("token"); // string | null
-  const tokenStr = token ?? ""; // ✅ always string for encoding / display
+  const token = searchParams.get("token");
+  const tokenStr = token ?? "";
 
   const [jobUrl, setJobUrl] = useState("");
   const [pastedText, setPastedText] = useState("");
@@ -78,7 +78,7 @@ export default function ExtractPage() {
     };
   }, [busy, saving, loadingToken]);
 
-  // ✅ NEW: when token exists, pull data from inbox
+  // When token exists, pull data from inbox
   useEffect(() => {
     if (!tokenStr) return;
 
@@ -121,7 +121,6 @@ export default function ExtractPage() {
 
         if (cancelled) return;
 
-        // Prefill fields
         setPastedText(item.extractedText);
         if (item.url) setJobUrl(item.url);
 
@@ -264,21 +263,52 @@ export default function ExtractPage() {
       ? lastParse?.bestUrl
       : "";
 
-  return (
-    <div style={{ padding: 18 }}>
-      <h1 style={{ fontSize: 38, fontWeight: 700, marginBottom: 6 }}>Add Job Application</h1>
-      <p style={{ marginTop: 0, color: "#222", opacity: 0.9 }}>
-        Extension → loads text automatically. Manual → paste URL or description.
-      </p>
+  const disabled = busy || saving || loadingToken;
 
-      <div style={{ background: "#fff", padding: 16, borderRadius: 10, marginTop: 12, marginBottom: 16 }}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Status: {statusLine}</div>
+  return (
+    <main style={{ padding: 12, maxWidth: "100%" }}>
+      {/* Header + actions at the TOP (no scrolling to use buttons) */}
+      <div className="win95-panel" style={{ padding: 10, marginBottom: 10 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+          <div style={{ fontSize: 18, fontWeight: 900 }}>Add Job Application</div>
+          <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.85 }}>
+            Extension → auto-loads text • Manual → paste URL or description
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+          <button onClick={handleExtractAndAnalyze} disabled={disabled} style={{ fontWeight: 900 }}>
+            Extract + Analyze (AI)
+          </button>
+
+          <button
+            onClick={handleSave}
+            disabled={!lastParse || disabled}
+            style={{ fontWeight: 900 }}
+          >
+            Save to Applications
+          </button>
+
+          <button
+            onClick={() => router.push("/applications")}
+            disabled={disabled}
+            style={{ fontWeight: 700 }}
+            aria-label="Go to Applications"
+          >
+            View Applications
+          </button>
+        </div>
+      </div>
+
+      {/* Status box */}
+      <div className="win95-panel" style={{ padding: 10, marginBottom: 10 }}>
+        <div style={{ fontWeight: 900, marginBottom: 8 }}>Status: {statusLine}</div>
 
         <div className="win95ProgressOuter" aria-label="progress">
           <div className="win95ProgressInner" style={{ width: `${progressPct}%` }} />
         </div>
 
-        <div style={{ marginTop: 10, color: "#333" }}>
+        <div style={{ marginTop: 8 }}>
           {loadingToken ? "Loading token..." : busy || saving ? "Working..." : "Idle."}
         </div>
 
@@ -287,20 +317,21 @@ export default function ExtractPage() {
         ) : null}
       </div>
 
-      <div style={{ marginBottom: 18 }}>
-        <label style={{ display: "block", fontWeight: 700, marginBottom: 8 }}>Job Posting URL</label>
+      {/* Inputs */}
+      <div className="win95-panel" style={{ padding: 10, marginBottom: 10 }}>
+        <div style={{ fontWeight: 900, marginBottom: 6 }}>Job Posting URL</div>
         <input
           value={jobUrl}
           onChange={(e) => setJobUrl(e.target.value)}
           placeholder="https://careers.company.com/job/..."
-          style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc", fontSize: 14 }}
+          style={{ width: "100%" }}
         />
-      </div>
 
-      <div style={{ textAlign: "center", margin: "10px 0 14px", opacity: 0.7, fontWeight: 700 }}>— OR —</div>
+        <div style={{ textAlign: "center", margin: "10px 0", opacity: 0.8, fontWeight: 900 }}>
+          — OR —
+        </div>
 
-      <div style={{ marginBottom: 18 }}>
-        <label style={{ display: "block", fontWeight: 700, marginBottom: 8 }}>Paste Job Description (fallback)</label>
+        <div style={{ fontWeight: 900, marginBottom: 6 }}>Paste Job Description (fallback)</div>
         <textarea
           value={pastedText}
           onChange={(e) => setPastedText(e.target.value)}
@@ -308,70 +339,32 @@ export default function ExtractPage() {
           rows={10}
           style={{
             width: "100%",
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            fontSize: 14,
             resize: "vertical",
           }}
         />
       </div>
 
-      <button
-        onClick={handleExtractAndAnalyze}
-        disabled={busy || saving || loadingToken}
-        style={{
-          width: "100%",
-          padding: 16,
-          borderRadius: 12,
-          border: "2px solid #777",
-          background: busy ? "#d0d0d0" : "#c0c0c0",
-          cursor: busy || saving || loadingToken ? "not-allowed" : "pointer",
-          fontWeight: 800,
-          marginBottom: 10,
-        }}
-      >
-        Extract + Analyze (AI)
-      </button>
-
-      <button
-        onClick={handleSave}
-        disabled={!lastParse || busy || saving || loadingToken}
-        style={{
-          width: "100%",
-          padding: 16,
-          borderRadius: 12,
-          border: "2px solid #777",
-          background: !lastParse || saving ? "#d0d0d0" : "#c0c0c0",
-          cursor: !lastParse || busy || saving || loadingToken ? "not-allowed" : "pointer",
-          fontWeight: 800,
-        }}
-      >
-        Save to Applications
-      </button>
-
+      {/* Preview */}
       {lastParse ? (
-        <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#f2f2f2", border: "1px solid #ccc" }}>
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>Parsed Preview</div>
-          <div><b>Company:</b> {previewCompany || "(unknown)"}</div>
-          <div><b>Title:</b> {previewTitle || "(unknown)"}</div>
-          <div style={{ wordBreak: "break-word" }}><b>URL:</b> {previewUrl || "(none)"}</div>
+        <div className="win95-panel" style={{ padding: 10, marginBottom: 10 }}>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Parsed Preview</div>
+          <div>
+            <b>Company:</b> {previewCompany || "(unknown)"}
+          </div>
+          <div>
+            <b>Title:</b> {previewTitle || "(unknown)"}
+          </div>
+          <div style={{ wordBreak: "break-word" }}>
+            <b>URL:</b> {previewUrl || "(none)"}
+          </div>
         </div>
       ) : null}
 
+      {/* Message / error box */}
       {messageLine ? (
-        <div
-          style={{
-            marginTop: 14,
-            padding: 12,
-            borderRadius: 10,
-            background: "#ffecec",
-            border: "1px solid #ffb5b5",
-            color: "#8a0000",
-            fontWeight: 700,
-          }}
-        >
-          Message: {messageLine}
+        <div className="win95-panel" style={{ padding: 10 }}>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Message</div>
+          <div style={{ whiteSpace: "pre-wrap" }}>{messageLine}</div>
         </div>
       ) : null}
 
@@ -392,6 +385,6 @@ export default function ExtractPage() {
           transition: width 180ms linear;
         }
       `}</style>
-    </div>
+    </main>
   );
 }

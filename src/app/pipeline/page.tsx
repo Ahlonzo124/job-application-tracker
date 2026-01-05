@@ -2,7 +2,7 @@ import PipelineBoard from "./pipeline-board";
 
 export default function PipelinePage() {
   return (
-    <main style={{ padding: 12 }}>
+    <main style={{ padding: 12, maxWidth: "100%" }}>
       {/* Header row */}
       <div
         className="win95-panel"
@@ -10,25 +10,23 @@ export default function PipelinePage() {
           padding: 10,
           marginBottom: 10,
           display: "flex",
+          flexWrap: "wrap",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 12,
+          gap: 10,
+          maxWidth: "100%",
         }}
       >
         <div style={{ fontSize: 18, fontWeight: 900 }}>Pipeline</div>
 
-        <a className="win95-btn" href="/api/export/csv">
+        <a className="win95-btn" href="/api/export/csv" style={{ whiteSpace: "nowrap" }}>
           Export CSV
         </a>
       </div>
 
-      {/* Fixed-height board area (columns scroll internally) */}
-      <div className="pipeline-board win95-panel" style={{ padding: 10 }}>
-        {/* This wrapper is important: it gives horizontal scroll if you add more columns later */}
-        <div className="pipeline-columns">
-          {/* PipelineBoard should render the columns INSIDE here.
-              If PipelineBoard already renders a columns row, that's fine—
-              it will just fill this space. */}
+      {/* Board area */}
+      <div className="pipeline-board win95-panel" style={{ padding: 10, maxWidth: "100%" }}>
+        <div className="pipeline-columns" style={{ maxWidth: "100%" }}>
           <div style={{ width: "100%" }}>
             <PipelineBoard />
           </div>
@@ -36,7 +34,7 @@ export default function PipelinePage() {
       </div>
 
       <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9 }}>
-        Tip: If the pipeline grows, each column will scroll while staying the same size.
+        Tip: Swipe left/right to move between columns on mobile.
       </div>
     </main>
   );

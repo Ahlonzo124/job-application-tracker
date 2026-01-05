@@ -16,13 +16,29 @@ type AppRow = {
   url: string | null;
 };
 
+function useIsMobile(maxWidth = 900) {
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia(`(max-width: ${maxWidth}px)`);
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [maxWidth]);
+
+  return isMobile;
+}
+
 export default function ApplicationsPage() {
+  const isMobile = useIsMobile(900);
+
   const [apps, setApps] = useState<AppRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   // filters
   const [query, setQuery] = useState("");
-  const [hideRejected, setHideRejected] = useState(false); // ✅ unchecked by default
+  const [hideRejected, setHideRejected] = useState(false);
   const [hideHired, setHideHired] = useState(false);
 
   useEffect(() => {
@@ -43,137 +59,134 @@ export default function ApplicationsPage() {
 
       if (!q) return true;
 
-      const hay = [
-        a.company,
-        a.title,
-        a.location ?? "",
-        a.stage,
-      ]
-        .join(" ")
-        .toLowerCase();
-
+      const hay = [a.company, a.title, a.location ?? "", a.stage].join(" ").toLowerCase();
       return hay.includes(q);
     });
   }, [apps, q, hideRejected, hideHired]);
 
+  function salaryText(a: AppRow) {
+    if (a.salaryMin == null && a.salaryMax == null) return "—";
+    return `${a.salaryCurrency || ""} ${a.salaryMin ?? ""}-${a.salaryMax ?? ""} ${a.salaryPeriod || ""}`.trim();
+  }
+
+  // Prevent hydration flicker
+  if (isMobile === null) return null;
+
   return (
-    <div style={{ maxWidth: 950, margin: "40px auto", padding: 16 }}>
-      <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 10 }}>
-        Applications
-      </h1>
+    <main style={{ padding: 12, maxWidth: "100%" }}>
+      {/* Header */}
+      <div className="win95-panel" style={{ padding: 10, marginBottom: 10 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+          <div style={{ fontSize: 18, fontWeight: 900 }}>Applications</div>
 
-      <div style={{ marginBottom: 14 }}>
-        <a href="/extract" style={{ fontWeight: 900 }}>
-          + Add new
-        </a>
+          <a href="/extract" className="win95-btn" style={{ marginLeft: "auto", fontWeight: 900 }}>
+            + Add New
+          </a>
+        </div>
       </div>
 
-      {/* Controls */}
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          alignItems: "center",
-          marginBottom: 14,
-        }}
-      >
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search company, title, location, stage…"
-          style={{
-            flex: "1 1 280px",
-            padding: 8,
-            borderRadius: 6,
-            border: "1px solid #ccc",
-          }}
-        />
-
-        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      {/* Filters */}
+      <div className="win95-panel" style={{ padding: 10, marginBottom: 10 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           <input
-            type="checkbox"
-            checked={hideRejected}
-            onChange={(e) => setHideRejected(e.target.checked)}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search company, title, location, stage..."
+            style={{ flex: "1 1 240px" }}
           />
-          Hide Rejected
-        </label>
 
-        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={hideHired}
-            onChange={(e) => setHideHired(e.target.checked)}
-          />
-          Hide Hired
-        </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={hideRejected}
+              onChange={(e) => setHideRejected(e.target.checked)}
+            />
+            Hide Rejected
+          </label>
 
-        <button
-          onClick={() => {
-            setQuery("");
-            setHideRejected(false);
-            setHideHired(false);
-          }}
-          style={{
-            padding: "6px 10px",
-            borderRadius: 6,
-            border: "1px solid #ccc",
-            background: "#fafafa",
-          }}
-        >
-          Reset
-        </button>
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input type="checkbox" checked={hideHired} onChange={(e) => setHideHired(e.target.checked)} />
+            Hide Hired
+          </label>
+
+          <button
+            onClick={() => {
+              setQuery("");
+              setHideRejected(false);
+              setHideHired(false);
+            }}
+          >
+            Reset
+          </button>
+        </div>
       </div>
 
+      {/* Content */}
       {loading ? (
-        <div>Loading...</div>
+        <div className="win95-panel" style={{ padding: 10 }}>
+          Loading…
+        </div>
       ) : filteredApps.length === 0 ? (
-        <div>No applications match your filters.</div>
+        <div className="win95-panel" style={{ padding: 10 }}>
+          No applications match your filters.
+        </div>
+      ) : isMobile ? (
+        // MOBILE CARDS
+        <div style={{ display: "grid", gap: 10 }}>
+          {filteredApps.map((a) => (
+            <div key={a.id} className="win95-panel" style={{ padding: 10 }}>
+              <div style={{ fontWeight: 900 }}>{a.company}</div>
+              <div>{a.title}</div>
+
+              <div style={{ marginTop: 6 }}>
+                <b>Stage:</b> {a.stage}
+              </div>
+              <div>
+                <b>Location:</b> {a.location || "—"}
+              </div>
+              <div>
+                <b>Salary:</b> {salaryText(a)}
+              </div>
+
+              {a.url ? (
+                <div style={{ marginTop: 8 }}>
+                  <a href={a.url} target="_blank" rel="noreferrer" className="win95-btn">
+                    Open Posting
+                  </a>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
       ) : (
-        <div style={{ border: "1px solid #ddd", borderRadius: 12, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        // DESKTOP TABLE
+        <div className="win95-panel" style={{ padding: 0, overflowX: "auto" }}>
+          <table>
             <thead>
-              <tr style={{ background: "#fafafa" }}>
-                <th style={th}>Company</th>
-                <th style={th}>Title</th>
-                <th style={th}>Location</th>
-                <th style={th}>Stage</th>
-                <th style={th}>Salary</th>
-                <th style={th}>Link</th>
+              <tr>
+                <th>Company</th>
+                <th>Title</th>
+                <th>Location</th>
+                <th>Stage</th>
+                <th>Salary</th>
+                <th>Link</th>
               </tr>
             </thead>
             <tbody>
               {filteredApps.map((a) => (
                 <tr key={a.id}>
-                  <td style={td}>{a.company}</td>
-                  <td style={td}>{a.title}</td>
-                  <td style={td}>{a.location || ""}</td>
-                  <td style={td}>{a.stage}</td>
-                  <td style={td}>
-                    {a.salaryMin != null || a.salaryMax != null
-                      ? `${a.salaryCurrency || ""} ${a.salaryMin ?? ""}-${a.salaryMax ?? ""} / ${a.salaryPeriod || ""}`
-                      : ""}
-                  </td>
-                  <td style={td}>
+                  <td>{a.company}</td>
+                  <td>{a.title}</td>
+                  <td>{a.location || ""}</td>
+                  <td>{a.stage}</td>
+                  <td>{salaryText(a)}</td>
+                  <td>
                     {a.url ? (
-                      <a
-                        href={a.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          display: "inline-block",
-                          maxWidth: 220,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          verticalAlign: "bottom",
-                        }}
-                        title={a.url}
-                      >
+                      <a href={a.url} target="_blank" rel="noreferrer">
                         open
                       </a>
                     ) : (
-                      <span style={{ opacity: 0.6 }}>—</span>
+                      "—"
                     )}
                   </td>
                 </tr>
@@ -182,18 +195,6 @@ export default function ApplicationsPage() {
           </table>
         </div>
       )}
-    </div>
+    </main>
   );
 }
-
-const th: React.CSSProperties = {
-  textAlign: "left",
-  padding: 10,
-  borderBottom: "1px solid #eee",
-};
-
-const td: React.CSSProperties = {
-  padding: 10,
-  borderBottom: "1px solid #f2f2f2",
-  verticalAlign: "top",
-};

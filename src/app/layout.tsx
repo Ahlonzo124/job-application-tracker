@@ -1,6 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import DesktopShell from "@/components/DesktopShell";
+import ResponsiveShell from "@/components/ResponsiveShell";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
@@ -31,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
       <body>
         <Providers>
-          <DesktopShell>{children}</DesktopShell>
+          <ResponsiveShell>{children}</ResponsiveShell>
         </Providers>
       </body>
     </html>
