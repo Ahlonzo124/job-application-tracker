@@ -12,14 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        {/* ✅ AdSense snippet (raw script so it appears in view-source) */}
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9366880450381021"
-          crossOrigin="anonymous"
-        ></script>
-
-        {/* ✅ Google Analytics (raw scripts, also visible in view-source) */}
+        {/* ✅ Google Analytics (raw scripts, visible in view-source) */}
         <script async src="https://www.googletagmanager.com/gtag/js?id=G-9JLBGCQ72S"></script>
         <script
           dangerouslySetInnerHTML={{
