@@ -148,10 +148,10 @@ export default function AuthedHomePage() {
                     <b>Save</b>: Save it to your Applications list
                   </li>
                   <li>
-                    <b>Pipeline</b>: Drag cards between stages
+                    <b>Pipeline</b>: Manage Application stages
                   </li>
                   <li>
-                    <b>Analytics</b>: Track activity + export CSV
+                    <b>Analytics</b>: Track activity (In development)
                   </li>
                 </ul>
               </div>

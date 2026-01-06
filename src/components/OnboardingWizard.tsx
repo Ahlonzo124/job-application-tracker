@@ -54,9 +54,9 @@ export default function OnboardingWizard({
         id: "save",
         title: "Step 2: Save and Review",
         desktopText:
-          "After extraction, save the application. You can edit notes and details later in Applications.",
+          "After extraction, save the application.",
         mobileText:
-          "After extraction, save the application. You can edit notes and details later in Applications.",
+          "After extraction, save the application.",
         actionLabel: "Open Applications",
         actionHref: "/applications",
       },
@@ -64,9 +64,9 @@ export default function OnboardingWizard({
         id: "pipeline",
         title: "Step 3: Manage Your Pipeline",
         desktopText:
-          "Use Pipeline to move applications through stages. Drag cards between columns to track progress.",
+          "Use Pipeline to move applications through stages. Click cards to edit and move applications.",
         mobileText:
-          "Use Pipeline to move applications through stages. On mobile, scrolling is normal; drag-and-drop may feel different depending on your device.",
+          "Use Pipeline to move applications through stages. Tap cards to edit and move applications.",
         actionLabel: "Open Pipeline",
         actionHref: "/pipeline",
       },
@@ -74,9 +74,9 @@ export default function OnboardingWizard({
         id: "export",
         title: "Step 4: Export When Needed",
         desktopText:
-          "Use Applications to export your data to CSV for spreadsheets or backup.",
+          "Use Pipeline to export your data to CSV for spreadsheets or backup.",
         mobileText:
-          "Use Applications to export your data to CSV for spreadsheets or backup.",
+          "Use Pipeline to export your data to CSV for spreadsheets or backup.",
       },
       {
         id: "done",

@@ -43,7 +43,7 @@ export default function LandingPage() {
               A Windows-95 desktop-style job application tracker with:
               <ul style={{ marginTop: 10, paddingLeft: 18 }}>
                 <li>AI extraction & structured parsing</li>
-                <li>Drag-and-drop pipeline board</li>
+                <li>Manage application status at pipeline board</li>
                 <li>Analytics + CSV export</li>
                 <li>Optional Chrome extension workflow</li>
               </ul>

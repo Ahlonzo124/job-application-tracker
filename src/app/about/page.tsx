@@ -24,7 +24,7 @@ export default function AboutPage() {
           <li>Extract job descriptions from pasted text or URLs</li>
           <li>Optionally send jobs from a Chrome extension</li>
           <li>Use AI to parse company, title, location, salary, and requirements</li>
-          <li>Track progress using a drag-and-drop pipeline</li>
+          <li>Track progress using a manual edit pipeline</li>
           <li>Store notes and export applications as CSV</li>
         </ul>
       </div>

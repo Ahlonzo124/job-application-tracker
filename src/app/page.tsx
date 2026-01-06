@@ -49,10 +49,11 @@ export default function LandingPage() {
               classic Windows-95 interface.
             </p>
 
-            <ul style={{ paddingLeft: 18 }}>
-              <li>No feeds</li>
-              <li>No selling your data</li>
-              <li>No subscriptions</li>
+            <ul>
+              <li>*Auto Log Job Applications</li>
+              <li>*Manage Application Status</li>
+              <li>*Export CSV (Beta)</li>
+              <li>*Analytics (Coming Soon)</li>
             </ul>
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
@@ -103,9 +104,10 @@ export default function LandingPage() {
               </p>
 
               <ul>
-                <li>No feeds</li>
-                <li>No selling your data</li>
-                <li>No subscriptions</li>
+                <li>*Auto Log Job Applications</li>
+                <li>*Manage Application Status</li>
+                <li>*Export CSV (Beta)</li>
+                <li>*Analytics (Coming Soon)</li>
               </ul>
 
               <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
