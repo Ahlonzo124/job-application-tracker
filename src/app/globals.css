@@ -277,6 +277,24 @@ th {
   font-weight: 700;
 }
 
+/* =========================
+   Win95 Modal Overlay
+   ========================= */
+
+.win95-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  display: grid;
+  place-items: center;
+  z-index: 500;
+}
+
+.win95-modal {
+  width: min(520px, calc(100vw - 28px));
+}
+
+
 .win95-titlebar .spacer {
   flex: 1;
 }

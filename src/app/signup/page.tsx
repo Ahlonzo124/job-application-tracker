@@ -66,7 +66,10 @@ export default function SignupPage() {
       return;
     }
 
-    window.location.href = "/";
+    // ✅ After signup, go to the signed-in home (instructions page)
+    // ✅ Use origin-safe redirect so LAN/mobile doesn't accidentally try localhost
+    const origin = window.location.origin;
+    window.location.replace(`${origin}/home`);
   }
 
   if (isMobile === null) return null;
@@ -169,7 +172,11 @@ export default function SignupPage() {
                 {loading ? "Creating..." : "Create Account"}
               </button>
 
-              <a href="/login" className="win95-btn" style={{ textDecoration: "none", fontWeight: 900 }}>
+              <a
+                href="/login"
+                className="win95-btn"
+                style={{ textDecoration: "none", fontWeight: 900 }}
+              >
                 Back to Login
               </a>
             </div>
@@ -314,7 +321,11 @@ export default function SignupPage() {
                 {loading ? "Creating..." : "Create Account"}
               </button>
 
-              <a href="/login" className="win95-btn" style={{ textDecoration: "none", fontWeight: 900 }}>
+              <a
+                href="/login"
+                className="win95-btn"
+                style={{ textDecoration: "none", fontWeight: 900 }}
+              >
                 Back to Login
               </a>
             </div>

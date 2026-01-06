@@ -6,6 +6,43 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id           Int           @id @default(autoincrement())
+  username     String        @unique
+  password     String
+  createdAt    DateTime      @default(now())
+  applications Application[]
+
+  // Onboarding & version tracking
+  onboardingDismissedAt DateTime?
+  lastSeenVersion       String?
+}
+
+model Application {
+  id                      Int              @id @default(autoincrement())
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  userId                  Int?
+  company                 String
+  title                   String
+  location                String?
+  url                     String?
+  jobType                 String?
+  workMode                String?
+  seniority               String?
+  salaryMin               Float?
+  salaryMax               Float?
+  salaryCurrency          String?
+  salaryPeriod            String?
+  descriptionSummary      String?
+  keyRequirementsJson     String?
+  keyResponsibilitiesJson String?
+  stage                   ApplicationStage @default(APPLIED)
+  sortOrder               Int              @default(0)
+  notes                   String?
+  appliedDate             DateTime?
+  user                    User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
 
 enum ApplicationStage {
   APPLIED
@@ -13,48 +50,4 @@ enum ApplicationStage {
   OFFER
   HIRED
   REJECTED
-}
-
-model User {
-  id        Int      @id @default(autoincrement())
-  username  String   @unique
-  password  String
-  createdAt DateTime @default(now())
-
-  applications Application[]
-}
-
-model Application {
-  id                      Int      @id @default(autoincrement())
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
-
-  // NEW: link each Application to a User (nullable for now to preserve existing rows)
-  userId                  Int?
-  user                    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  company                 String
-  title                   String
-  location                String?
-  url                     String?
-
-  jobType                 String?
-  workMode                String?
-  seniority               String?
-
-  salaryMin               Float?
-  salaryMax               Float?
-  salaryCurrency          String?
-  salaryPeriod            String?
-
-  descriptionSummary      String?
-
-  keyRequirementsJson     String?
-  keyResponsibilitiesJson String?
-
-  stage                   ApplicationStage @default(APPLIED)
-  sortOrder               Int              @default(0)
-
-  notes                   String?
-  appliedDate             DateTime?
 }
