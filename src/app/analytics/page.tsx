@@ -27,7 +27,7 @@ export default async function AnalyticsPage() {
   // Safety net (shouldn't happen because requireAuth redirects)
   if (!userId) {
     return (
-      <div className="win95-panel" style={{ padding: 12 }}>
+      <div className="win95-panel" style={{ padding: 12, maxWidth: "100%" }}>
         <div style={{ fontWeight: 900, marginBottom: 6 }}>Analytics</div>
         <div style={{ fontSize: 12 }}>Unauthorized</div>
       </div>
@@ -36,7 +36,14 @@ export default async function AnalyticsPage() {
 
   const apps = await prisma.application.findMany({
     where: { userId }, // ✅ scoped
-    select: { stage: true, createdAt: true, updatedAt: true, company: true, title: true, id: true },
+    select: {
+      stage: true,
+      createdAt: true,
+      updatedAt: true,
+      company: true,
+      title: true,
+      id: true,
+    },
     orderBy: { createdAt: "asc" },
   });
 
@@ -63,42 +70,66 @@ export default async function AnalyticsPage() {
   const topStage = [...rows].sort((a, b) => b.count - a.count)[0]?.label ?? "—";
 
   return (
-    <div>
-      <div className="win95-panel" style={{ padding: 10, marginBottom: 10 }}>
+    <div style={{ maxWidth: "100%", overflowX: "hidden" }}>
+      <div className="win95-panel" style={{ padding: 10, marginBottom: 10, maxWidth: "100%" }}>
         <div style={{ fontWeight: 900, fontSize: 18 }}>Analytics</div>
         <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
-          Basic pipeline stats (more charts later if you want).
+          Basic pipeline stats (more charts coming soon).
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 12 }}>
-        <div className="win95-panel" style={{ padding: 12 }}>
+      {/* Mobile-safe layout: always one column */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr",
+          gap: 12,
+          maxWidth: "100%",
+        }}
+      >
+        <div className="win95-panel" style={{ padding: 12, maxWidth: "100%" }}>
           <div style={{ fontWeight: 900, marginBottom: 8 }}>Stage Breakdown</div>
 
-          <table>
-            <thead>
-              <tr>
-                <th>Stage</th>
-                <th>Count</th>
-                <th>%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.stage}>
-                  <td>{r.label}</td>
-                  <td>{r.count}</td>
-                  <td>{r.pct}%</td>
+          {/* ✅ HARD CONTAIN: never allow the table to widen the page */}
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "100%",
+              overflowX: "auto",
+              overflowY: "hidden",
+              WebkitOverflowScrolling: "touch",
+            }}
+          >
+            <table
+              style={{
+                width: "100%",
+                tableLayout: "fixed",
+              }}
+            >
+              <thead>
+                <tr>
+                  <th style={{ width: "50%" }}>Stage</th>
+                  <th style={{ width: "25%" }}>Count</th>
+                  <th style={{ width: "25%" }}>%</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.stage}>
+                    <td style={{ wordBreak: "break-word" }}>{r.label}</td>
+                    <td style={{ wordBreak: "break-word" }}>{r.count}</td>
+                    <td style={{ wordBreak: "break-word" }}>{r.pct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div className="win95-panel" style={{ padding: 12 }}>
+        <div className="win95-panel" style={{ padding: 12, maxWidth: "100%" }}>
           <div style={{ fontWeight: 900, marginBottom: 8 }}>Summary</div>
 
-          <div className="win95-bevel-inset" style={{ padding: 10, background: "#fff" }}>
+          <div className="win95-bevel-inset" style={{ padding: 10, background: "#fff", maxWidth: "100%" }}>
             <div style={{ marginBottom: 6 }}>
               <b>Total applications:</b> {total}
             </div>
@@ -112,10 +143,10 @@ export default async function AnalyticsPage() {
 
           <div style={{ height: 12 }} />
 
-          <div className="win95-bevel-inset" style={{ padding: 10, background: "#fff" }}>
+          <div className="win95-bevel-inset" style={{ padding: 10, background: "#fff", maxWidth: "100%" }}>
             <div style={{ fontWeight: 700, marginBottom: 6 }}>Next</div>
             <div style={{ fontSize: 12 }}>
-              We can add charts and a “time in stage” report once you want it.
+              Charts and a “time in stage” report soon to be added.
             </div>
           </div>
         </div>
