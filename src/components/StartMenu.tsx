@@ -57,7 +57,12 @@ export default function StartMenu({ onOpenApp }: { onOpenApp: (msg: string) => v
 
   async function handleLogout() {
     setOpen(false);
-    await signOut({ callbackUrl: "/login" });
+
+    // ✅ Do NOT let NextAuth redirect (can misbehave across LAN / preview URLs)
+    await signOut({ redirect: false });
+
+    // ✅ Hard redirect to the public landing page on the current host
+    window.location.replace(`${window.location.origin}/`);
   }
 
   return (
